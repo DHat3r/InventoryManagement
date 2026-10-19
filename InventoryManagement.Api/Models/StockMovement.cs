@@ -48,7 +48,13 @@ public class StockMovement
     [Required]
     public int NewStock { get; set; }
 
-    // Navigation property
+    // User FK (Fase 4 - Auditoría)
+    public int? UserId { get; set; }
+
+    // Navigation properties
     [ForeignKey(nameof(ProductId))]
     public virtual Product Product { get; set; } = null!;
+
+    [ForeignKey(nameof(UserId))]
+    public virtual User? User { get; set; }
 }

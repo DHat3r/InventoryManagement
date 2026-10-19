@@ -1548,8 +1548,316 @@ POST http://localhost:5263/api/products/1/movements
 
 ### Próximos pasos (Fase 4)
 
-* [ ] Identity + JWT + Roles (Admin, Manager, Viewer)
-* [ ] UserId en StockMovement (auditoría quién hizo el movimiento)
-* [ ] CreatedBy/ModifiedBy en todas las entidades
-* [ ] Políticas de autorización por endpoint
-* [ ] Refresh tokens + revocación
+* [x] Identity + JWT + Roles (Admin, Inventario, Contador, Comprador)
+* [x] UserId en StockMovement (auditoría quién hizo el movimiento)
+* [x] CreatedBy/ModifiedBy en todas las entidades
+* [x] Políticas de autorización por endpoint
+* [x] Refresh tokens + revocación + rotación
+
+***
+
+## 📦 FASE 4 - Auth JWT + Users + Roles + Admin Seed (Agregado 19/10/2026)
+
+### Objetivo
+
+Implementar autenticación y autorización completa sin ASP.NET Core Identity, usando JWT Bearer tokens, refresh tokens con rotación, y un sistema de roles personalizado (Admin, Inventario, Contador, Comprador).
+
+### Paquetes adicionales
+
+```xml
+<PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.10" />
+<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.10" />
+```
+
+### Nuevos archivos creados
+
+```
+InventoryManagement.Api/
+├── Models/
+│   ├── UserRole.cs              # enum: Admin=1, Inventario=2, Contador=3, Comprador=4
+│   ├── User.cs                  # Entidad usuario
+│   └── RefreshToken.cs          # Entidad refresh token
+├── DTOs/
+│   └── AuthDtos.cs              # LoginDto, LoginResponseDto, RefreshTokenDto, CreateUserDto, UpdateUserDto, ChangePasswordDto, UserListDto, UserFilterDto, UserInfoDto
+├── Validators/
+│   └── AuthValidators.cs        # LoginValidator, CreateUserValidator, UpdateUserValidator, ChangePasswordValidator, RefreshTokenValidator, UserFilterValidator
+├── Services/
+│   ├── AuthService.cs           # Login, Refresh, Revoke, ChangePassword, JWT generation, BCrypt
+│   ├── CurrentUserService.cs    # Acceso al usuario autenticado actual (claims)
+│   └── AdminSeedService.cs      # Seed admin al arrancar la app
+└── Mapping/
+    └── MapsterConfig.cs         # + configs User ↔ DTOs
+```
+
+### Entidad User
+
+```csharp
+public class User
+{
+    [Key] public int Id { get; set; }
+    [Required, MaxLength(50)] public string UserName { get; set; }
+    [MaxLength(12)] public string? Rut { get; set; }  // Normalizado sin puntos/guión
+    [Required, MaxLength(500)] public string PasswordHash { get; set; }
+    [Required, MaxLength(200)] public string FullName { get; set; }
+    [Required] public UserRole Role { get; set; } = UserRole.Comprador;
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+    public DateTime? LastLoginAt { get; set; }
+    public int FailedLoginAttempts { get; set; } = 0;
+    public DateTime? LockedUntil { get; set; }
+
+    // Navigation
+    public virtual ICollection<RefreshToken> RefreshTokens { get; set; }
+    public virtual ICollection<StockMovement> StockMovements { get; set; }
+    public virtual ICollection<Category> CategoriesCreated { get; set; }
+    public virtual ICollection<Category> CategoriesModified { get; set; }
+    public virtual ICollection<Product> ProductsCreated { get; set; }
+    public virtual ICollection<Product> ProductsModified { get; set; }
+}
+
+public enum UserRole : byte
+{
+    Admin = 1,
+    Inventario = 2,
+    Contador = 3,
+    Comprador = 4
+}
+```
+
+### Entidad RefreshToken
+
+```csharp
+public class RefreshToken
+{
+    [Key] public int Id { get; set; }
+    [Required] public int UserId { get; set; }
+    [Required, MaxLength(500)] public string TokenHash { get; set; }  // SHA256
+    [Required] public DateTime ExpiresAt { get; set; }
+    public DateTime? RevokedAt { get; set; }
+    [MaxLength(500)] public string? ReplacedByTokenHash { get; set; }
+    [Required] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [ForeignKey(nameof(UserId))]
+    public virtual User User { get; set; } = null!;
+
+    public bool IsActive => RevokedAt == null && DateTime.UtcNow < ExpiresAt;
+}
+```
+
+### Convención RUT según Rol
+
+| Rol | RUT | Descripción |
+|-----|-----|-------------|
+| **Admin** | **Obligatorio** | Acceso total |
+| **Inventario** | **Obligatorio** | Gestión stock |
+| **Contador** | **Obligatorio** | Reportes y valoración |
+| **Comprador** | **Opcional** | Solo entradas |
+
+Validación en `CreateUserValidator` / `UpdateUserValidator`:
+```csharp
+RuleFor(x => x.Rut)
+    .NotEmpty().When(x => x.Role != UserRole.Comprador)
+        .WithMessage("El RUT es obligatorio para Admin, Inventario y Contador")
+    .Must(BeValidRut).When(x => !string.IsNullOrEmpty(x.Rut))
+        .WithMessage("El RUT no tiene un formato válido (ej: 12.345.678-9)");
+```
+
+### Admin Seed Service (App Startup)
+
+El admin se crea/actualiza **cada vez que la app arranca**, leyendo config de `appsettings.json` / variables de entorno:
+
+```json
+"AdminSeed": {
+  "UserName": "admin",
+  "Rut": "765432105",
+  "FullName": "Administrador del Sistema",
+  "Password": "Admin123!",
+  "RotateOnStartup": true,
+  "RunOnStartup": true
+}
+```
+
+- Si no existe → **crea** con password de config
+- Si existe y `RotateOnStartup=true` + password cambió → **rota** hash
+- Si existe y password igual → **no toca nada**
+
+> Ventaja: Password configurable por env var / secret manager, rotación automática en deploy.
+
+### JWT + Refresh Tokens (Rotación)
+
+| Token | Expiración | Almacenamiento |
+|-------|------------|----------------|
+| Access Token | 15 min (configurable) | Solo memoria cliente |
+| Refresh Token | 7 días (configurable) | BD (tabla `refresh_tokens`) |
+
+**Rotación**: Cada refresh invalida el token anterior y genera uno nuevo (previene replay attacks).
+
+```csharp
+// Refresh endpoint
+POST /api/auth/refresh { "refreshToken": "..." }
+// Response: nuevo accessToken + nuevo refreshToken
+```
+
+### Políticas de Autorización
+
+```csharp
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy("RequireAdmin", p => p.RequireRole("Admin"))
+    .AddPolicy("RequireInventarioOrAdmin", p => p.RequireRole("Admin", "Inventario"))
+    .AddPolicy("RequireContadorOrAdmin", p => p.RequireRole("Admin", "Contador"))
+    .AddPolicy("RequireCompradorOrInventarioOrAdmin", p => p.RequireRole("Admin", "Inventario", "Comprador"));
+```
+
+### Aplicación en Endpoints
+
+| Endpoint | Policy | Quién puede |
+|----------|--------|-------------|
+| `POST /api/products/{id}/movements` (Entrada) | `RequireCompradorOrInventarioOrAdmin` | Comprador, Inventario, Admin |
+| `POST /api/products/{id}/movements` (Salida) | *Validación interna* | Solo Inventario, Admin |
+| `POST /api/products/{id}/movements` (Ajuste) | *Validación interna* | Solo Inventario, Admin |
+| `GET /api/products/{id}/kardex` | `RequireContadorOrAdmin` | Contador, Inventario, Admin |
+| `GET /api/products/{id}/kardex/summary` | `RequireContadorOrAdmin` | Contador, Inventario, Admin |
+| `POST /api/products` | `RequireInventarioOrAdmin` | Inventario, Admin |
+| `POST /api/users`, `DELETE /api/users/{id}` | `RequireAdmin` | Solo Admin |
+
+> **Nota**: La validación de Salida/Ajuste se hace dentro del endpoint (no policy) porque depende del `Type` del DTO.
+
+### Auditoría (CreatedBy / ModifiedBy)
+
+Todas las entidades principales tienen columnas de auditoría:
+
+```csharp
+// Category, Product
+public int? CreatedBy { get; set; }
+public int? ModifiedBy { get; set; }
+
+[ForeignKey(nameof(CreatedBy))]
+public virtual User? CreatedByUser { get; set; }
+[ForeignKey(nameof(ModifiedBy))]
+public virtual User? ModifiedByUser { get; set; }
+
+// StockMovement
+public int? UserId { get; set; }  // Quién registró el movimiento
+```
+
+### Endpoints Auth
+
+| Método | Ruta | Auth | Descripción |
+|--------|------|------|-------------|
+| `POST` | `/api/auth/login` | AllowAnonymous | Login → JWT + RefreshToken |
+| `POST` | `/api/auth/refresh` | AllowAnonymous | Renovar access token |
+| `POST` | `/api/auth/logout` | Authenticated | Revocar refresh token |
+| `GET` | `/api/auth/me` | Authenticated | Info usuario actual |
+| `POST` | `/api/auth/change-password` | Authenticated | Cambiar password (revoca tokens) |
+
+### Endpoints Users (Admin only)
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `GET` | `/api/users` | Listar usuarios (paginado, filtros) |
+| `GET` | `/api/users/{id}` | Ver usuario |
+| `POST` | `/api/users` | Crear usuario (hash password + validación RUT) |
+| `PUT` | `/api/users/{id}` | Actualizar usuario |
+| `DELETE` | `/api/users/{id}` | Soft delete (IsActive=false) |
+
+### Migración generada (20261019231116_AddUsersAndAuth)
+
+```sql
+-- Tabla users
+CREATE TABLE users (
+    "Id" integer GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    "UserName" character varying(50) NOT NULL UNIQUE,
+    "Rut" character varying(12) NULL,
+    "PasswordHash" character varying(500) NOT NULL,
+    "FullName" character varying(200) NOT NULL,
+    "Role" smallint NOT NULL,
+    "IsActive" boolean NOT NULL DEFAULT TRUE,
+    "CreatedAt" timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "UpdatedAt" timestamp with time zone,
+    "LastLoginAt" timestamp with time zone,
+    "FailedLoginAttempts" integer NOT NULL DEFAULT 0,
+    "LockedUntil" timestamp with time zone
+);
+
+-- Índices
+CREATE UNIQUE INDEX "IX_users_UserName" ON users ("UserName");
+CREATE UNIQUE INDEX "IX_users_Rut" ON users ("Rut") WHERE "Rut" IS NOT NULL;
+CREATE INDEX "IX_users_Role_IsActive" ON users ("Role", "IsActive");
+
+-- Tabla refresh_tokens
+CREATE TABLE refresh_tokens (
+    "Id" integer GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    "UserId" integer NOT NULL,
+    "TokenHash" character varying(500) NOT NULL,
+    "ExpiresAt" timestamp with time zone NOT NULL,
+    "RevokedAt" timestamp with time zone,
+    "ReplacedByTokenHash" character varying(500),
+    "CreatedAt" timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "FK_refresh_tokens_users_UserId" FOREIGN KEY ("UserId") REFERENCES users ("Id") ON DELETE CASCADE
+);
+
+-- Auditoría en tablas existentes
+ALTER TABLE products ADD "CreatedBy" integer, ADD "ModifiedBy" integer;
+ALTER TABLE categories ADD "CreatedBy" integer, ADD "ModifiedBy" integer;
+ALTER TABLE stock_movements ADD "UserId" integer;
+
+-- FKs auditoría (SET NULL)
+ALTER TABLE products ADD CONSTRAINT "FK_products_users_CreatedBy" FOREIGN KEY ("CreatedBy") REFERENCES users ("Id") ON DELETE SET NULL;
+-- ... igual para ModifiedBy, categories, stock_movements
+```
+
+### Verificación funcional completa
+
+```bash
+# 1. Build y migración
+dotnet build
+dotnet ef migrations add AddUsersAndAuth
+dotnet ef database update
+
+# 2. Ejecutar
+dotnet run --urls "http://localhost:5263"
+
+# 3. Login admin (password de appsettings)
+POST http://localhost:5263/api/auth/login
+{ "userName": "admin", "password": "Admin123!" }
+
+# 4. Usar accessToken en Authorization: Bearer <token>
+
+# 5. Crear usuario Inventario
+POST http://localhost:5263/api/users
+{ "userName": "inventario1", "rut": "12345678-5", "password": "Test123!", "fullName": "Usuario Inventario", "role": 2 }
+
+# 6. Login Inventario y crear movimiento Entrada
+POST http://localhost:5263/api/products/1/movements
+{ "type": "Entrada", "quantity": 10, "reason": "Compra", "reference": "FC-001", "unitCost": 900 }
+
+# 7. Login Comprador y probar Entrada (OK) vs Salida (403)
+POST http://localhost:5263/api/products/1/movements
+{ "type": "Entrada", "quantity": 5 }  # 200 OK
+
+POST http://localhost:5263/api/products/1/movements
+{ "type": "Salida", "quantity": 5 }   # 403 Forbidden
+
+# 8. Login Contador y ver kardex/summary (OK)
+GET http://localhost:5263/api/products/1/kardex/summary
+
+# 9. Refresh token
+POST http://localhost:5263/api/auth/refresh
+{ "refreshToken": "..." }
+
+# 10. Logout (revoca refresh token)
+POST http://localhost:5263/api/auth/logout
+{ "refreshToken": "..." }
+```
+
+### Próximos pasos (Fase 5+)
+
+* [ ] Tests unitarios (xUnit + FluentValidation tests)
+* [ ] Tests de integración (TestContainers + WebApplicationFactory)
+* [ ] Health Checks (/health, /health/ready, /health/live)
+* [ ] OpenAPI mejorado (ejemplos, XML docs, annotations)
+* [ ] Rate Limiting
+* [ ] CORS configurado para frontend
+* [ ] Dockerfile multi-stage para deploy

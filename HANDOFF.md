@@ -1,8 +1,8 @@
 # 📦 HANDOFF - InventoryManagement.Api
 
 > **Proyecto:** Backend ASP.NET Core 8.0 para Manejo de Inventario  
-> **Estado actual:** ✅ Fase 0, 1, 2 y **Fase 3 completadas** y probadas  
-> **Próximo:** Fase 4 - Auth JWT + Identity + Roles  
+> **Estado actual:** ✅ Fase 0, 1, 2, 3 y **Fase 4 completadas** y probadas  
+> **Próximo:** Fase 5 - Tests y Calidad  
 > **Fecha:** 19/10/2026
 
 ---
@@ -15,8 +15,8 @@
 | **1 - DTOs/Validación/Mapeo** | ✅ | FluentValidation + Mapster + DTOs + ApiResponse + ProblemDetails |
 | **2 - Error Handling + Logging** | ✅ | Middleware global + Excepciones dominio + Serilog + Correlation ID |
 | **3 - Stock Movements** | ✅ **COMPLETADA** | StockMovement entity, Kardex, movimientos entrada/salida/ajuste |
-| **4 - Auth JWT** | 🔄 **SIGUIENTE** | Identity + JWT + Roles + Refresh tokens |
-| **5 - Tests** | ⏳ | xUnit + TestContainers + Integration tests |
+| **4 - Auth JWT** | ✅ **COMPLETADA** | JWT + Roles + Refresh tokens + Rotación + Auditoría + Admin Seed |
+| **5 - Tests** | 🔄 **SIGUIENTE** | xUnit + TestContainers + Integration tests |
 | **6 - Observabilidad** | ⏳ | Health checks + Métricas + Versionado |
 | **7 - Performance** | ⏳ | Redis cache + Background jobs |
 | **8 - Frontend-Ready** | ⏳ | OpenAPI mejorado + Cliente TS + CORS + Rate limiting |
@@ -147,6 +147,18 @@ POST   /api/products/{id}/movements       # Registrar movimiento (Entrada/Salida
 GET    /api/products/{id}/kardex          # Historial paginado + filtros
         ?page=1&pageSize=50&type=Salida&dateFrom=2026-01-01&reference=FV-
 GET    /api/products/{id}/kardex/summary  # Resumen valorado (para contador)
+
+# Auth / Users (Fase 4) ✅
+POST   /api/auth/login                    # Login → JWT + RefreshToken
+POST   /api/auth/refresh                  # Renovar access token (rotación)
+POST   /api/auth/logout                   # Revocar refresh token
+GET    /api/auth/me                       # Info usuario actual
+POST   /api/auth/change-password          # Cambiar password (revoca tokens)
+GET    /api/users                         # Listar usuarios (Admin, paginado)
+GET    /api/users/{id}                    # Ver usuario (Admin)
+POST   /api/users                         # Crear usuario (Admin, valida RUT)
+PUT    /api/users/{id}                    # Actualizar usuario (Admin)
+DELETE /api/users/{id}                    # Soft delete (Admin)
 ```
 
 ### Respuestas estandarizadas

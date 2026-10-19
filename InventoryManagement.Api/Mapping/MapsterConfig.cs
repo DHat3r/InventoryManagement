@@ -123,6 +123,51 @@ public static class MapsterConfig
             .Ignore(dest => dest.Product)
             .Ignore(dest => dest.PreviousStock)
             .Ignore(dest => dest.NewStock);
+
+        // ============================================================
+        // USERS & AUTH (Fase 4)
+        // ============================================================
+
+        // User -> UserInfoDto
+        TypeAdapterConfig<User, UserInfoDto>
+            .NewConfig()
+            .Map(dest => dest.Rut, src => src.Rut);
+
+        // User -> UserListDto
+        TypeAdapterConfig<User, UserListDto>
+            .NewConfig()
+            .Map(dest => dest.Rut, src => src.Rut);
+
+        // CreateUserDto -> User
+        TypeAdapterConfig<CreateUserDto, User>
+            .NewConfig()
+            .Map(dest => dest.CreatedAt, _ => DateTime.UtcNow)
+            .Map(dest => dest.PasswordHash, src => src.Password) // Se hashea en el servicio
+            .Map(dest => dest.Rut, src => NormalizeRut(src.Rut))
+            .Ignore(dest => dest.Id)
+            .Ignore(dest => dest.UpdatedAt)
+            .Ignore(dest => dest.RefreshTokens)
+            .Ignore(dest => dest.StockMovements)
+            .Ignore(dest => dest.CategoriesCreated)
+            .Ignore(dest => dest.CategoriesModified)
+            .Ignore(dest => dest.ProductsCreated)
+            .Ignore(dest => dest.ProductsModified);
+
+        // UpdateUserDto -> User
+        TypeAdapterConfig<UpdateUserDto, User>
+            .NewConfig()
+            .Map(dest => dest.UpdatedAt, _ => DateTime.UtcNow)
+            .Map(dest => dest.Rut, src => NormalizeRut(src.Rut))
+            .Ignore(dest => dest.Id)
+            .Ignore(dest => dest.CreatedAt)
+            .Ignore(dest => dest.PasswordHash)
+            .Ignore(dest => dest.RefreshTokens)
+            .Ignore(dest => dest.StockMovements)
+            .Ignore(dest => dest.CategoriesCreated)
+            .Ignore(dest => dest.CategoriesModified)
+            .Ignore(dest => dest.ProductsCreated)
+            .Ignore(dest => dest.ProductsModified);
+
     }
 
     private static CategoryRefDto MapCategoryRef(Category? category)
@@ -131,4 +176,7 @@ public static class MapsterConfig
             ? new CategoryRefDto(category.Id, category.Name) 
             : new CategoryRefDto(0, string.Empty);
     }
+
+    private static string NormalizeRut(string? rut)
+        => string.IsNullOrWhiteSpace(rut) ? null! : rut.Replace(".", "").Replace("-", "").ToUpper();
 }

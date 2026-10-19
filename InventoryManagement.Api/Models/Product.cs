@@ -43,7 +43,18 @@ public class Product
     // Foreign Key
     public int CategoryId { get; set; }
 
+    // Audit columns (Fase 4)
+    public int? CreatedBy { get; set; }
+    public int? ModifiedBy { get; set; }
+
     // Navigation property
     [ForeignKey(nameof(CategoryId))]
     public virtual Category Category { get; set; } = null!;
+
+    // Audit navigation
+    [ForeignKey(nameof(CreatedBy))]
+    public virtual User? CreatedByUser { get; set; }
+
+    [ForeignKey(nameof(ModifiedBy))]
+    public virtual User? ModifiedByUser { get; set; }
 }

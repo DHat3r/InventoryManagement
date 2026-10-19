@@ -35,6 +35,9 @@ namespace InventoryManagement.Api.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Description")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -43,6 +46,9 @@ namespace InventoryManagement.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
                         .HasDefaultValue(true);
+
+                    b.Property<int?>("ModifiedBy")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -54,6 +60,10 @@ namespace InventoryManagement.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CreatedBy");
+
+                    b.HasIndex("ModifiedBy");
+
                     b.HasIndex("Name")
                         .IsUnique();
 
@@ -63,7 +73,7 @@ namespace InventoryManagement.Api.Migrations
                         new
                         {
                             Id = 1,
-                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6667),
+                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1668),
                             Description = "Productos electrónicos y tecnológicos",
                             IsActive = true,
                             Name = "Electrónica"
@@ -71,7 +81,7 @@ namespace InventoryManagement.Api.Migrations
                         new
                         {
                             Id = 2,
-                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6668),
+                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1669),
                             Description = "Prendas de vestir y accesorios",
                             IsActive = true,
                             Name = "Ropa"
@@ -79,7 +89,7 @@ namespace InventoryManagement.Api.Migrations
                         new
                         {
                             Id = 3,
-                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6669),
+                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1670),
                             Description = "Artículos para el hogar y decoración",
                             IsActive = true,
                             Name = "Hogar"
@@ -87,7 +97,7 @@ namespace InventoryManagement.Api.Migrations
                         new
                         {
                             Id = 4,
-                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6670),
+                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1671),
                             Description = "Equipamiento y ropa deportiva",
                             IsActive = true,
                             Name = "Deportes"
@@ -113,6 +123,9 @@ namespace InventoryManagement.Api.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Description")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
@@ -126,6 +139,9 @@ namespace InventoryManagement.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
                         .HasDefaultValue(10);
+
+                    b.Property<int?>("ModifiedBy")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -157,6 +173,10 @@ namespace InventoryManagement.Api.Migrations
 
                     b.HasIndex("CategoryId");
 
+                    b.HasIndex("CreatedBy");
+
+                    b.HasIndex("ModifiedBy");
+
                     b.HasIndex("Name");
 
                     b.HasIndex("SKU")
@@ -170,7 +190,7 @@ namespace InventoryManagement.Api.Migrations
                             Id = 1,
                             CategoryId = 1,
                             Cost = 950.00m,
-                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6832),
+                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1810),
                             Description = "Laptop para gaming de alto rendimiento",
                             IsActive = true,
                             MinStockLevel = 5,
@@ -185,7 +205,7 @@ namespace InventoryManagement.Api.Migrations
                             Id = 2,
                             CategoryId = 1,
                             Cost = 25.00m,
-                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6833),
+                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1812),
                             Description = "Mouse ergonómico inalámbrico",
                             IsActive = true,
                             MinStockLevel = 10,
@@ -200,7 +220,7 @@ namespace InventoryManagement.Api.Migrations
                             Id = 3,
                             CategoryId = 1,
                             Cost = 45.00m,
-                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6835),
+                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1814),
                             Description = "Teclado mecánico RGB",
                             IsActive = true,
                             MinStockLevel = 8,
@@ -215,7 +235,7 @@ namespace InventoryManagement.Api.Migrations
                             Id = 4,
                             CategoryId = 4,
                             Cost = 12.00m,
-                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6836),
+                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1815),
                             Description = "Camiseta transpirable para deporte",
                             IsActive = true,
                             MinStockLevel = 20,
@@ -230,7 +250,7 @@ namespace InventoryManagement.Api.Migrations
                             Id = 5,
                             CategoryId = 4,
                             Cost = 65.00m,
-                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6838),
+                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1817),
                             Description = "Zapatillas para running profesionales",
                             IsActive = true,
                             MinStockLevel = 10,
@@ -245,7 +265,7 @@ namespace InventoryManagement.Api.Migrations
                             Id = 6,
                             CategoryId = 3,
                             Cost = 18.00m,
-                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6839),
+                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1818),
                             Description = "Lámpara de escritorio LED regulable",
                             IsActive = true,
                             MinStockLevel = 10,
@@ -255,6 +275,44 @@ namespace InventoryManagement.Api.Migrations
                             StockQuantity = 40,
                             UnitOfMeasure = "UN"
                         });
+                });
+
+            modelBuilder.Entity("InventoryManagement.Api.Models.RefreshToken", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ReplacedByTokenHash")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "RevokedAt");
+
+                    b.ToTable("refresh_tokens", (string)null);
                 });
 
             modelBuilder.Entity("InventoryManagement.Api.Models.StockMovement", b =>
@@ -296,15 +354,105 @@ namespace InventoryManagement.Api.Migrations
                     b.Property<decimal?>("UnitCost")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<int?>("UserId")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Reference");
 
                     b.HasIndex("Type");
 
+                    b.HasIndex("UserId");
+
                     b.HasIndex("ProductId", "CreatedAt");
 
                     b.ToTable("stock_movements", (string)null);
+                });
+
+            modelBuilder.Entity("InventoryManagement.Api.Models.User", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<int>("FailedLoginAttempts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<DateTime?>("LastLoginAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LockedUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<byte>("Role")
+                        .HasColumnType("smallint");
+
+                    b.Property<string>("Rut")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Rut")
+                        .IsUnique()
+                        .HasFilter("\"Rut\" IS NOT NULL");
+
+                    b.HasIndex("UserName")
+                        .IsUnique();
+
+                    b.HasIndex("Role", "IsActive");
+
+                    b.ToTable("users", (string)null);
+                });
+
+            modelBuilder.Entity("InventoryManagement.Api.Models.Category", b =>
+                {
+                    b.HasOne("InventoryManagement.Api.Models.User", "CreatedByUser")
+                        .WithMany("CategoriesCreated")
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("InventoryManagement.Api.Models.User", "ModifiedByUser")
+                        .WithMany("CategoriesModified")
+                        .HasForeignKey("ModifiedBy")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("ModifiedByUser");
                 });
 
             modelBuilder.Entity("InventoryManagement.Api.Models.Product", b =>
@@ -315,7 +463,32 @@ namespace InventoryManagement.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("InventoryManagement.Api.Models.User", "CreatedByUser")
+                        .WithMany("ProductsCreated")
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("InventoryManagement.Api.Models.User", "ModifiedByUser")
+                        .WithMany("ProductsModified")
+                        .HasForeignKey("ModifiedBy")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Category");
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("ModifiedByUser");
+                });
+
+            modelBuilder.Entity("InventoryManagement.Api.Models.RefreshToken", b =>
+                {
+                    b.HasOne("InventoryManagement.Api.Models.User", "User")
+                        .WithMany("RefreshTokens")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("InventoryManagement.Api.Models.StockMovement", b =>
@@ -326,12 +499,34 @@ namespace InventoryManagement.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("InventoryManagement.Api.Models.User", "User")
+                        .WithMany("StockMovements")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Product");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("InventoryManagement.Api.Models.Category", b =>
                 {
                     b.Navigation("Products");
+                });
+
+            modelBuilder.Entity("InventoryManagement.Api.Models.User", b =>
+                {
+                    b.Navigation("CategoriesCreated");
+
+                    b.Navigation("CategoriesModified");
+
+                    b.Navigation("ProductsCreated");
+
+                    b.Navigation("ProductsModified");
+
+                    b.Navigation("RefreshTokens");
+
+                    b.Navigation("StockMovements");
                 });
 #pragma warning restore 612, 618
         }

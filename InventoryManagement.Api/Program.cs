@@ -1,5 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 using FluentValidation;
 using Mapster;
 using Serilog;
@@ -11,6 +16,7 @@ using InventoryManagement.Api.Mapping;
 using InventoryManagement.Api.Common;
 using InventoryManagement.Api.Common.Exceptions;
 using InventoryManagement.Api.Middleware;
+using InventoryManagement.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -54,6 +60,43 @@ builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 builder.Services.AddMapster();
 MapsterConfig.RegisterMappings();
 
+// ─── Authentication & Authorization (Fase 4) ───
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+builder.Services.AddScoped<IAdminSeedService, AdminSeedService>();
+builder.Services.Configure<AdminSeedOptions>(builder.Configuration.GetSection("AdminSeed"));
+
+// JWT Bearer
+var jwtSecret = builder.Configuration["Jwt:Secret"] ?? throw new InvalidOperationException("Jwt:Secret no configurado");
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "InventoryManagement.Api";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "InventoryManagement.Client";
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+            ClockSkew = TimeSpan.Zero,
+            RoleClaimType = ClaimTypes.Role,
+            NameClaimType = JwtRegisteredClaimNames.Sub
+        };
+    });
+
+// Authorization Policies
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy("RequireAdmin", p => p.RequireRole("Admin"))
+    .AddPolicy("RequireInventarioOrAdmin", p => p.RequireRole("Admin", "Inventario"))
+    .AddPolicy("RequireContadorOrAdmin", p => p.RequireRole("Admin", "Contador"))
+    .AddPolicy("RequireCompradorOrInventarioOrAdmin", p => p.RequireRole("Admin", "Inventario", "Comprador"));
+
 var app = builder.Build();
 
 // ─── Pipeline ───
@@ -76,12 +119,24 @@ app.UseSerilogRequestLogging(options =>
     };
 });
 
+// Auth middleware
+app.UseAuthentication();
+app.UseAuthorization();
+
 // Auto-migrate on startup (dev)
 if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
     await db.Database.MigrateAsync();
+}
+
+// ─── Admin Seed on Startup ───
+if (app.Configuration.GetValue<bool>("AdminSeed:RunOnStartup", true))
+{
+    using var scope = app.Services.CreateScope();
+    var seedService = scope.ServiceProvider.GetRequiredService<IAdminSeedService>();
+    await seedService.EnsureAdminExistsAsync();
 }
 
 // ─── Helpers ───
@@ -106,6 +161,7 @@ categories.MapGet("/", async (InventoryDbContext db) =>
         .ToListAsync();
     return Results.Ok(OkResponse(list));
 })
+.RequireAuthorization("RequireInventarioOrAdmin") // Ver categorías: Inventario, Admin
 .WithName("GetCategories")
 .WithOpenApi();
 
@@ -120,27 +176,30 @@ categories.MapGet("/{id:int}", async (int id, InventoryDbContext db) =>
         ? Results.Ok(OkResponse(entity)) 
         : throw new NotFoundException("Category", id);
 })
+.RequireAuthorization("RequireInventarioOrAdmin")
 .WithName("GetCategoryById")
 .WithOpenApi();
 
 // POST create
-categories.MapPost("/", async (CreateCategoryDto dto, IValidator<CreateCategoryDto> validator, InventoryDbContext db) =>
+categories.MapPost("/", async (CreateCategoryDto dto, IValidator<CreateCategoryDto> validator, InventoryDbContext db, ICurrentUserService currentUser) =>
 {
     var validation = await validator.ValidateAsync(dto);
     if (!validation.IsValid) return ValidationProblem(validation);
 
     var entity = dto.Adapt<Category>();
+    entity.CreatedBy = currentUser.UserId;
     db.Categories.Add(entity);
     await db.SaveChangesAsync();
 
     var result = entity.Adapt<CategoryDto>();
     return Results.Created($"/api/categories/{entity.Id}", OkResponse(result, "Categoría creada"));
 })
+.RequireAuthorization("RequireInventarioOrAdmin") // Crear categorías: Inventario, Admin
 .WithName("CreateCategory")
 .WithOpenApi();
 
 // PUT update
-categories.MapPut("/{id:int}", async (int id, UpdateCategoryDto dto, IValidator<UpdateCategoryDto> validator, InventoryDbContext db) =>
+categories.MapPut("/{id:int}", async (int id, UpdateCategoryDto dto, IValidator<UpdateCategoryDto> validator, InventoryDbContext db, ICurrentUserService currentUser) =>
 {
     var validation = await validator.ValidateAsync(dto);
     if (!validation.IsValid) return ValidationProblem(validation);
@@ -149,11 +208,13 @@ categories.MapPut("/{id:int}", async (int id, UpdateCategoryDto dto, IValidator<
     if (entity is null) throw new NotFoundException("Category", id);
 
     dto.Adapt(entity);
+    entity.ModifiedBy = currentUser.UserId;
     await db.SaveChangesAsync();
 
     var result = entity.Adapt<CategoryDto>();
     return Results.Ok(OkResponse(result, "Categoría actualizada"));
 })
+.RequireAuthorization("RequireInventarioOrAdmin") // Actualizar categorías: Inventario, Admin
 .WithName("UpdateCategory")
 .WithOpenApi();
 
@@ -168,6 +229,7 @@ categories.MapDelete("/{id:int}", async (int id, InventoryDbContext db) =>
     await db.SaveChangesAsync();
     return Results.NoContent();
 })
+.RequireAuthorization("RequireAdmin") // Eliminar categorías: solo Admin
 .WithName("DeleteCategory")
 .WithOpenApi();
 
@@ -239,6 +301,7 @@ products.MapGet("/", async (
         }
     }));
 })
+.RequireAuthorization("RequireInventarioOrAdmin") // Ver productos: Inventario, Admin
 .WithName("GetProducts")
 .WithOpenApi();
 
@@ -254,6 +317,7 @@ products.MapGet("/{id:int}", async (int id, InventoryDbContext db) =>
         ? Results.Ok(OkResponse(entity)) 
         : throw new NotFoundException("Product", id);
 })
+.RequireAuthorization("RequireInventarioOrAdmin")
 .WithName("GetProductById")
 .WithOpenApi();
 
@@ -268,16 +332,18 @@ products.MapGet("/low-stock", async (InventoryDbContext db) =>
         .ToListAsync();
     return Results.Ok(OkResponse(list));
 })
+.RequireAuthorization("RequireInventarioOrAdmin") // Stock bajo: Inventario, Admin
 .WithName("GetLowStockProducts")
 .WithOpenApi();
 
 // POST create
-products.MapPost("/", async (CreateProductDto dto, IValidator<CreateProductDto> validator, InventoryDbContext db) =>
+products.MapPost("/", async (CreateProductDto dto, IValidator<CreateProductDto> validator, InventoryDbContext db, ICurrentUserService currentUser) =>
 {
     var validation = await validator.ValidateAsync(dto);
     if (!validation.IsValid) return ValidationProblem(validation);
 
     var entity = dto.Adapt<Product>();
+    entity.CreatedBy = currentUser.UserId;
     db.Products.Add(entity);
     await db.SaveChangesAsync();
 
@@ -287,11 +353,12 @@ products.MapPost("/", async (CreateProductDto dto, IValidator<CreateProductDto> 
 
     return Results.Created($"/api/products/{entity.Id}", OkResponse(result, "Producto creado"));
 })
+.RequireAuthorization("RequireInventarioOrAdmin") // Crear productos: Inventario, Admin
 .WithName("CreateProduct")
 .WithOpenApi();
 
 // PUT update
-products.MapPut("/{id:int}", async (int id, UpdateProductDto dto, IValidator<UpdateProductDto> validator, InventoryDbContext db) =>
+products.MapPut("/{id:int}", async (int id, UpdateProductDto dto, IValidator<UpdateProductDto> validator, InventoryDbContext db, ICurrentUserService currentUser) =>
 {
     var validation = await validator.ValidateAsync(dto);
     if (!validation.IsValid) return ValidationProblem(validation);
@@ -303,6 +370,7 @@ products.MapPut("/{id:int}", async (int id, UpdateProductDto dto, IValidator<Upd
     if (validator is UpdateProductValidator upv) upv.SetProductId(id);
 
     dto.Adapt(entity);
+    entity.ModifiedBy = currentUser.UserId;
     await db.SaveChangesAsync();
 
     await db.Entry(entity).Reference(p => p.Category).LoadAsync();
@@ -310,11 +378,12 @@ products.MapPut("/{id:int}", async (int id, UpdateProductDto dto, IValidator<Upd
 
     return Results.Ok(OkResponse(result, "Producto actualizado"));
 })
+.RequireAuthorization("RequireInventarioOrAdmin") // Actualizar productos: Inventario, Admin
 .WithName("UpdateProduct")
 .WithOpenApi();
 
 // PATCH stock
-products.MapPatch("/{id:int}/stock", async (int id, UpdateStockDto dto, IValidator<UpdateStockDto> validator, InventoryDbContext db) =>
+products.MapPatch("/{id:int}/stock", async (int id, UpdateStockDto dto, IValidator<UpdateStockDto> validator, InventoryDbContext db, ICurrentUserService currentUser) =>
 {
     var validation = await validator.ValidateAsync(dto);
     if (!validation.IsValid) return ValidationProblem(validation);
@@ -323,25 +392,29 @@ products.MapPatch("/{id:int}/stock", async (int id, UpdateStockDto dto, IValidat
     if (entity is null) throw new NotFoundException("Product", id);
 
     dto.Adapt(entity);
+    entity.ModifiedBy = currentUser.UserId;
     await db.SaveChangesAsync();
 
     var result = entity.Adapt<ProductDto>();
     return Results.Ok(OkResponse(result, "Stock actualizado"));
 })
+.RequireAuthorization("RequireInventarioOrAdmin") // Actualizar stock: Inventario, Admin
 .WithName("UpdateProductStock")
 .WithOpenApi();
 
 // DELETE (soft)
-products.MapDelete("/{id:int}", async (int id, InventoryDbContext db) =>
+products.MapDelete("/{id:int}", async (int id, InventoryDbContext db, ICurrentUserService currentUser) =>
 {
     var entity = await db.Products.FindAsync(id);
     if (entity is null) throw new NotFoundException("Product", id);
 
     entity.IsActive = false;
     entity.UpdatedAt = DateTime.UtcNow;
+    entity.ModifiedBy = currentUser.UserId;
     await db.SaveChangesAsync();
     return Results.NoContent();
 })
+.RequireAuthorization("RequireAdmin") // Eliminar productos: solo Admin
 .WithName("DeleteProduct")
 .WithOpenApi();
 
@@ -355,8 +428,26 @@ products.MapPost("/{id:int}/movements", async (
     int id,
     CreateStockMovementDto dto,
     IValidator<CreateStockMovementDto> validator,
-    InventoryDbContext db) =>
+    InventoryDbContext db,
+    ICurrentUserService currentUser) =>
 {
+    // Autorización según tipo de movimiento
+    if (dto.Type == MovementType.Entrada)
+    {
+        if (!currentUser.IsInRole(UserRole.Comprador, UserRole.Inventario, UserRole.Admin))
+            return Results.Forbid();
+    }
+    else if (dto.Type == MovementType.Salida)
+    {
+        if (!currentUser.IsInRole(UserRole.Inventario, UserRole.Admin))
+            return Results.Forbid();
+    }
+    else if (dto.Type == MovementType.Ajuste)
+    {
+        if (!currentUser.IsInRole(UserRole.Inventario, UserRole.Admin))
+            return Results.Forbid();
+    }
+
     // Pasar productId al validador ANTES de validar (para validaciones de negocio con BD)
     if (validator is CreateStockMovementValidator csv) csv.SetProductId(id);
 
@@ -418,12 +509,14 @@ products.MapPost("/{id:int}/movements", async (
         movement.PreviousStock = previousStock;
         movement.NewStock = newStock;
         movement.UnitCost = unitCost;
+        movement.UserId = currentUser.UserId; // Auditoría: quién registró el movimiento
 
         db.StockMovements.Add(movement);
 
         // Actualizar stock del producto
         product.StockQuantity = newStock;
         product.UpdatedAt = DateTime.UtcNow;
+        product.ModifiedBy = currentUser.UserId;
 
         await db.SaveChangesAsync();
         await transaction.CommitAsync();
@@ -437,6 +530,7 @@ products.MapPost("/{id:int}/movements", async (
         throw;
     }
 })
+// .RequireAuthorization("RequireCompradorOrInventarioOrAdmin") // Manejado dentro del endpoint según tipo
 .WithName("CreateStockMovement")
 .WithOpenApi();
 
@@ -491,6 +585,7 @@ products.MapGet("/{id:int}/kardex", async (
         }
     }));
 })
+.RequireAuthorization("RequireContadorOrAdmin") // Ver kardex: Contador, Inventario, Admin
 .WithName("GetProductKardex")
 .WithOpenApi();
 
@@ -538,7 +633,206 @@ products.MapGet("/{id:int}/kardex/summary", async (int id, InventoryDbContext db
 
     return Results.Ok(OkResponse(summary));
 })
-.WithName("GetKardexSummary")
+.RequireAuthorization("RequireContadorOrAdmin") // Resumen valorado: Contador, Admin
+.WithName("GetProductKardexFiltered")
+.WithOpenApi();
+
+// GET /api/products/{id}/kardex/summary - Resumen valorado del kardex
+// ============================================================
+
+var auth = app.MapGroup("/api/auth").WithTags("Auth").AllowAnonymous();
+
+// POST /api/auth/login
+auth.MapPost("/login", async (LoginDto dto, IValidator<LoginDto> validator, IAuthService authService) =>
+{
+    var validation = await validator.ValidateAsync(dto);
+    if (!validation.IsValid) return ValidationProblem(validation);
+
+    var result = await authService.LoginAsync(dto);
+    return result is not null
+        ? Results.Ok(OkResponse(result, "Login exitoso"))
+        : Results.Unauthorized();
+})
+.WithName("Login")
+.WithOpenApi();
+
+// POST /api/auth/refresh
+auth.MapPost("/refresh", async (RefreshTokenDto dto, IValidator<RefreshTokenDto> validator, IAuthService authService) =>
+{
+    var validation = await validator.ValidateAsync(dto);
+    if (!validation.IsValid) return ValidationProblem(validation);
+
+    var result = await authService.RefreshAsync(dto.RefreshToken);
+    return result is not null
+        ? Results.Ok(OkResponse(result, "Token renovado"))
+        : Results.Unauthorized();
+})
+.WithName("RefreshToken")
+.WithOpenApi();
+
+// POST /api/auth/logout
+auth.MapPost("/logout", async (RefreshTokenDto dto, IValidator<RefreshTokenDto> validator, IAuthService authService) =>
+{
+    var validation = await validator.ValidateAsync(dto);
+    if (!validation.IsValid) return ValidationProblem(validation);
+
+    await authService.RevokeRefreshTokenAsync(dto.RefreshToken);
+    return Results.Ok(OkResponse(true, "Logout exitoso"));
+})
+.RequireAuthorization() // Requiere estar autenticado
+.WithName("Logout")
+.WithOpenApi();
+
+// GET /api/auth/me
+auth.MapGet("/me", async (ICurrentUserService currentUser, IAuthService authService) =>
+{
+    if (!currentUser.IsAuthenticated || !currentUser.UserId.HasValue)
+        return Results.Unauthorized();
+
+    var userInfo = await authService.GetUserInfoAsync(currentUser.UserId.Value);
+    return userInfo is not null
+        ? Results.Ok(OkResponse(userInfo))
+        : Results.NotFound();
+})
+.RequireAuthorization()
+.WithName("GetCurrentUser")
+.WithOpenApi();
+
+// POST /api/auth/change-password
+auth.MapPost("/change-password", async (ChangePasswordDto dto, IValidator<ChangePasswordDto> validator, IAuthService authService, ICurrentUserService currentUser) =>
+{
+    var validation = await validator.ValidateAsync(dto);
+    if (!validation.IsValid) return ValidationProblem(validation);
+
+    if (!currentUser.UserId.HasValue) return Results.Unauthorized();
+
+    var success = await authService.ChangePasswordAsync(currentUser.UserId.Value, dto);
+    return success
+        ? Results.Ok(OkResponse(true, "Contraseña cambiada exitosamente"))
+        : Results.BadRequest(OkResponse<bool>(false, "Contraseña actual incorrecta"));
+})
+.RequireAuthorization()
+.WithName("ChangePassword")
+.WithOpenApi();
+
+
+// ============================================================
+// USERS ENDPOINTS (Admin only) - Fase 4
+// ============================================================
+
+var users = app.MapGroup("/api/users").WithTags("Users").RequireAuthorization("RequireAdmin");
+
+// GET all users (paginado)
+users.MapGet("/", async (
+    InventoryDbContext db,
+    IValidator<UserFilterDto> filterValidator,
+    [AsParameters] UserFilterDto filter) =>
+{
+    var validation = await filterValidator.ValidateAsync(filter);
+    if (!validation.IsValid) return ValidationProblem(validation);
+
+    var query = db.Users.AsQueryable();
+
+    if (filter.Role.HasValue)
+        query = query.Where(u => u.Role == filter.Role.Value);
+
+    if (filter.IsActive.HasValue)
+        query = query.Where(u => u.IsActive == filter.IsActive.Value);
+
+    if (!string.IsNullOrWhiteSpace(filter.Search))
+        query = query.Where(u => u.UserName.Contains(filter.Search!) || u.FullName.Contains(filter.Search!) || (u.Rut != null && u.Rut.Contains(filter.Search!)));
+
+    query = query.OrderBy(u => u.UserName);
+
+    var total = await query.CountAsync();
+    var items = await query
+        .Skip((filter.Page - 1) * filter.PageSize)
+        .Take(filter.PageSize)
+        .ProjectToType<UserListDto>()
+        .ToListAsync();
+
+    var paged = PagedResult<UserListDto>.Create(items, total, filter.Page, filter.PageSize);
+    return Results.Ok(OkResponse(paged, meta: new
+    {
+        pagination = new
+        {
+            paged.TotalCount,
+            paged.Page,
+            paged.PageSize,
+            paged.TotalPages,
+            paged.HasPreviousPage,
+            paged.HasNextPage
+        }
+    }));
+})
+.WithName("GetUsers")
+.WithOpenApi();
+
+// GET user by ID
+users.MapGet("/{id:int}", async (int id, InventoryDbContext db) =>
+{
+    var user = await db.Users
+        .Where(u => u.Id == id)
+        .ProjectToType<UserInfoDto>()
+        .FirstOrDefaultAsync();
+    return user is not null
+        ? Results.Ok(OkResponse(user))
+        : throw new NotFoundException("User", id);
+})
+.WithName("GetUserById")
+.WithOpenApi();
+
+// POST create user
+users.MapPost("/", async (CreateUserDto dto, IValidator<CreateUserDto> validator, InventoryDbContext db, IAuthService authService) =>
+{
+    var validation = await validator.ValidateAsync(dto);
+    if (!validation.IsValid) return ValidationProblem(validation);
+
+    var user = dto.Adapt<User>();
+    user.PasswordHash = authService.HashPassword(dto.Password);
+    user.CreatedAt = DateTime.UtcNow;
+
+    db.Users.Add(user);
+    await db.SaveChangesAsync();
+
+    var result = user.Adapt<UserInfoDto>();
+    return Results.Created($"/api/users/{user.Id}", OkResponse(result, "Usuario creado"));
+})
+.WithName("CreateUser")
+.WithOpenApi();
+
+// PUT update user
+users.MapPut("/{id:int}", async (int id, UpdateUserDto dto, IValidator<UpdateUserDto> validator, InventoryDbContext db) =>
+{
+    var validation = await validator.ValidateAsync(dto);
+    if (!validation.IsValid) return ValidationProblem(validation);
+
+    var user = await db.Users.FindAsync(id);
+    if (user is null) throw new NotFoundException("User", id);
+
+    dto.Adapt(user);
+    user.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync();
+
+    var result = user.Adapt<UserInfoDto>();
+    return Results.Ok(OkResponse(result, "Usuario actualizado"));
+})
+.WithName("UpdateUser")
+.WithOpenApi();
+
+// DELETE (soft delete) user
+users.MapDelete("/{id:int}", async (int id, InventoryDbContext db) =>
+{
+    var user = await db.Users.FindAsync(id);
+    if (user is null) throw new NotFoundException("User", id);
+
+    user.IsActive = false;
+    user.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync();
+
+    return Results.NoContent();
+})
+.WithName("DeleteUser")
 .WithOpenApi();
 
 

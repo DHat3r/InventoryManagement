@@ -1,7 +1,7 @@
 # Backend TODO - InventoryManagement.Api
 
 > **Objetivo:** Backend completo y robusto para que el frontend solo "llegue y conecte"  
-> **Estado actual:** ✅ Fase 0, 1, 2 y **3 completadas** (EF Core + DTOs/Validación + Error Handling + Logging + **Stock Movements/Kardex**)
+> **Estado actual:** ✅ Fase 0, 1, 2, 3 y **4 completadas** (EF Core + DTOs/Validación + Error Handling + Logging + **Stock Movements/Kardex + Auth JWT + Roles + Auditoría**)
 
 ---
 
@@ -101,25 +101,32 @@
 
 ---
 
-## 🟢 FASE 4 - Seguridad y Autenticación (Prioridad ALTA para prod)
+## 🟢 FASE 4 - Seguridad y Autenticación (Prioridad ALTA para prod) - **COMPLETADA ✅**
 
-### 4.1 Identity + JWT
-- [ ] Instalar `Microsoft.AspNetCore.Identity.EntityFrameworkCore`
-- [ ] Entidades: `ApplicationUser`, `ApplicationRole`
-- [ ] `IdentityDbContext` (heredar o separar)
-- [ ] JWT Bearer: `Microsoft.AspNetCore.Authentication.JwtBearer`
-- [ ] Endpoints: `/api/auth/register`, `/api/auth/login`, `/api/auth/refresh`
-- [ ] Roles: `Admin`, `Manager`, `Viewer`
+### 4.1 Auth JWT (sin Identity)
+- [x] Paquetes: `BCrypt.Net-Next`, `Microsoft.AspNetCore.Authentication.JwtBearer`, `System.IdentityModel.Tokens.Jwt`
+- [x] Entidades: `User`, `RefreshToken`, `UserRole` enum
+- [x] JWT Bearer: `Microsoft.AspNetCore.Authentication.JwtBearer`
+- [x] Endpoints: `/api/auth/login`, `/api/auth/refresh`, `/api/auth/logout`, `/api/auth/me`, `/api/auth/change-password`
+- [x] Roles: `Admin`, `Inventario`, `Contador`, `Comprador`
 
 ### 4.2 Autorización en endpoints
-- [ ] Policies: `RequireAdmin`, `RequireManagerOrAdmin`
-- [ ] `[Authorize(Policy = "...")]` en endpoints sensibles
-- [ ] Ownership: usuarios solo ven/modifican su data (si multi-tenant)
+- [x] Policies: `RequireAdmin`, `RequireInventarioOrAdmin`, `RequireContadorOrAdmin`, `RequireCompradorOrInventarioOrAdmin`
+- [x] `RequireAuthorization("...")` en endpoints sensibles
+- [x] Validación dinámica en endpoint según `MovementType` (Entrada/Salida/Ajuste)
 
-### 4.3 Refresh Tokens + Revocación
-- [ ] Tabla `RefreshTokens` (hash, expiración, revocado)
-- [ ] Rotación de refresh tokens
-- [ ] Logout (revocar token actual)
+### 4.3 Refresh Tokens + Revocación + Rotación
+- [x] Tabla `refresh_tokens` (hash SHA256, expiración, revocado, reemplazado)
+- [x] Rotación de refresh tokens (invalidación del anterior + nuevo)
+- [x] Logout (revocar token actual)
+- [x] Cambio password (revoca todos los refresh tokens del usuario)
+
+### 4.4 Auditoría + Admin Seed
+- [x] `CreatedBy` / `ModifiedBy` en Category, Product, StockMovement
+- [x] `UserId` en StockMovement (quién registró el movimiento)
+- [x] Admin Seed Service al arrancar (configurable por env vars, rotación password automática)
+- [x] RUT obligatorio según rol (Admin/Inventario/Contador) / opcional (Comprador)
+- [x] Validación RUT chileno (algoritmo módulo 11)
 
 ---
 
@@ -210,7 +217,7 @@
 | ✅ DTOs separados de Entidades | ✅ |
 | ✅ Manejo errores global (ProblemDetails) | ✅ |
 | ✅ **Stock Movements / Kardex** | ✅ |
-| ✅ Auth JWT + Roles | ⬜ |
+| ✅ **Auth JWT + Roles + Auditoría** | ✅ |
 | ✅ Health checks | ⬜ |
 | ✅ OpenAPI completo con ejemplos | ⬜ |
 | ✅ Cliente generable (TypeScript) | ⬜ |
@@ -222,4 +229,4 @@
 
 ## 🎯 PRÓXIMO PASO RECOMENDADO
 
-**Iniciar Fase 4:** Seguridad y Autenticación (JWT + Identity + Roles)
+**Iniciar Fase 5:** Tests y Calidad (xUnit + TestContainers + Integration Tests)

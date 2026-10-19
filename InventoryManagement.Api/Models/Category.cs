@@ -21,6 +21,17 @@ public class Category
 
     public DateTime? UpdatedAt { get; set; }
 
-    // Navigation property
+    // Audit columns (Fase 4)
+    public int? CreatedBy { get; set; }
+    public int? ModifiedBy { get; set; }
+
+    // Navigation properties
     public virtual ICollection<Product> Products { get; set; } = new List<Product>();
+
+    // Audit navigation
+    [ForeignKey(nameof(CreatedBy))]
+    public virtual User? CreatedByUser { get; set; }
+
+    [ForeignKey(nameof(ModifiedBy))]
+    public virtual User? ModifiedByUser { get; set; }
 }

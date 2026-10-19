@@ -12,6 +12,8 @@ public class InventoryDbContext : DbContext
     public DbSet<Product> Products => Set<Product>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
+    public DbSet<User> Users => Set<User>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -26,6 +28,16 @@ public class InventoryDbContext : DbContext
             entity.Property(e => e.Description).HasMaxLength(500);
             entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            
+            // Audit FKs (nullable, SET NULL)
+            entity.HasOne(e => e.CreatedByUser)
+                  .WithMany(u => u.CategoriesCreated)
+                  .HasForeignKey(e => e.CreatedBy)
+                  .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.ModifiedByUser)
+                  .WithMany(u => u.CategoriesModified)
+                  .HasForeignKey(e => e.ModifiedBy)
+                  .OnDelete(DeleteBehavior.SetNull);
             
             entity.HasIndex(e => e.Name).IsUnique();
         });
@@ -45,6 +57,16 @@ public class InventoryDbContext : DbContext
             entity.Property(e => e.UnitOfMeasure).HasMaxLength(50).HasDefaultValue("UN");
             entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            
+            // Audit FKs (nullable, SET NULL)
+            entity.HasOne(e => e.CreatedByUser)
+                  .WithMany(u => u.ProductsCreated)
+                  .HasForeignKey(e => e.CreatedBy)
+                  .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.ModifiedByUser)
+                  .WithMany(u => u.ProductsModified)
+                  .HasForeignKey(e => e.ModifiedBy)
+                  .OnDelete(DeleteBehavior.SetNull);
             
             entity.HasIndex(e => e.SKU).IsUnique();
             entity.HasIndex(e => e.Name);
@@ -75,11 +97,54 @@ public class InventoryDbContext : DbContext
             entity.HasIndex(e => e.Type);
             entity.HasIndex(e => e.Reference);
             
-            // Relationship
+            // Relationships
             entity.HasOne(e => e.Product)
                   .WithMany()
                   .HasForeignKey(e => e.ProductId)
                   .OnDelete(DeleteBehavior.Restrict);
+            
+            // User FK (nullable, SET NULL para auditoría)
+            entity.HasOne(e => e.User)
+                  .WithMany(u => u.StockMovements)
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // User configuration (Fase 4 - Auth)
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.ToTable("users");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.UserName).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Rut).HasMaxLength(12);
+            entity.Property(e => e.PasswordHash).HasMaxLength(500).IsRequired();
+            entity.Property(e => e.FullName).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Role).HasConversion<byte>().IsRequired();
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.FailedLoginAttempts).HasDefaultValue(0);
+            
+            entity.HasIndex(e => e.UserName).IsUnique();
+            entity.HasIndex(e => e.Rut).IsUnique().HasFilter("\"Rut\" IS NOT NULL");
+            entity.HasIndex(e => new { e.Role, e.IsActive });
+        });
+
+        // RefreshToken configuration
+        modelBuilder.Entity<RefreshToken>(entity =>
+        {
+            entity.ToTable("refresh_tokens");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TokenHash).HasMaxLength(500).IsRequired();
+            entity.Property(e => e.ExpiresAt).IsRequired();
+            entity.Property(e => e.ReplacedByTokenHash).HasMaxLength(500);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            
+            entity.HasIndex(e => new { e.UserId, e.RevokedAt });
+            
+            entity.HasOne(e => e.User)
+                  .WithMany(u => u.RefreshTokens)
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Seed data
