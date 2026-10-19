@@ -867,14 +867,369 @@ dotnet run
 # Swagger: http://localhost:5263/swagger
 ```
 
-### Próximos pasos (Fase 2)
+### Próximos pasos (Fase 2) - **COMPLETADA ✅**
 
-* [ ] Middleware global `ExceptionHandlingMiddleware`
+## 📦 FASE 2 - Error Handling Global + Logging (Agregado 19/10/2026)
 
-* [ ] Excepciones de dominio (`NotFoundException`, `BusinessRuleException`)
+### Paquetes adicionales instalados
 
-* [ ] ProblemDetails RFC 7807 unificado para todos los errores
+```xml
+<ItemGroup>
+  <PackageReference Include="Serilog.AspNetCore" Version="8.0.1" />
+  <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+  <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+  <PackageReference Include="Serilog.Enrichers.CorrelationId" Version="3.0.1" />
+  <PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
+  <PackageReference Include="Serilog.Enrichers.Process" Version="3.0.0" />
+  <PackageReference Include="Serilog.Enrichers.Thread" Version="3.0.0" />
+  <PackageReference Include="Serilog.Formatting.Compact" Version="2.0.0" />
+</ItemGroup>
+```
 
-* [ ] Serilog (Console + File) + Correlation ID
+| Paquete                           | Propósito                                         |
+| --------------------------------- | ------------------------------------------------- |
+| `Serilog.AspNetCore`              | Integración Serilog con ASP.NET Core              |
+| `Serilog.Sinks.Console`           | Log a consola (formato legible)                   |
+| `Serilog.Sinks.File`              | Log a archivo (JSON compacto, rolling daily)      |
+| `Serilog.Enrichers.CorrelationId` | Correlation ID automático (RequestId)             |
+| `Serilog.Enrichers.Environment`   | MachineName, Environment, UserName                |
+| `Serilog.Enrichers.Process`       | ProcessId                                         |
+| `Serilog.Enrichers.Thread`        | ThreadId                                          |
+| `Serilog.Formatting.Compact`      | Formatter JSON compacto para archivos             |
 
-* [ ] Log de queries EF Core lentas
+### Nueva estructura de carpetas (Fase 2)
+
+```
+InventoryManagement.Api/
+├── Common/
+│   ├── ApiResponse.cs
+│   └── Exceptions/                # ✅ NUEVO
+│       ├── NotFoundException.cs
+│       ├── BusinessRuleException.cs
+│       ├── ConcurrencyException.cs
+│       └── ValidationException.cs
+├── Middleware/                    # ✅ NUEVO
+│   └── ExceptionHandlingMiddleware.cs
+├── Logging/                       # ✅ NUEVO
+│   └── EfCoreSlowQueryInterceptor.cs
+└── ... (existente)
+```
+
+### Excepciones de dominio
+
+#### Common/Exceptions/NotFoundException.cs
+```csharp
+public class NotFoundException : Exception
+{
+    public NotFoundException(string resourceName, object resourceKey)
+        : base($"{resourceName} con clave '{resourceKey}' no encontrado")
+    {
+        ResourceName = resourceName;
+        ResourceKey = resourceKey;
+    }
+    public string ResourceName { get; }
+    public object ResourceKey { get; }
+}
+```
+
+#### Common/Exceptions/BusinessRuleException.cs
+```csharp
+public class BusinessRuleException : Exception
+{
+    public BusinessRuleException(string rule, string? detail = null)
+        : base($"Regla de negocio violada: {rule}" + (detail != null ? $" - {detail}" : ""))
+    {
+        Rule = rule;
+        Detail = detail;
+    }
+    public string Rule { get; }
+    public string? Detail { get; }
+}
+```
+
+#### Common/Exceptions/ConcurrencyException.cs
+```csharp
+public class ConcurrencyException : Exception
+{
+    public ConcurrencyException(string resourceName, object resourceKey)
+        : base($"Conflicto de concurrencia: {resourceName} con clave '{resourceKey}' fue modificado por otro usuario")
+    {
+        ResourceName = resourceName;
+        ResourceKey = resourceKey;
+    }
+    public string ResourceName { get; }
+    public object ResourceKey { get; }
+}
+```
+
+#### Common/Exceptions/ValidationException.cs
+```csharp
+public class ValidationException : Exception
+{
+    public ValidationException(string message, IDictionary<string, string[]>? errors = null)
+        : base(message)
+    {
+        Errors = errors ?? new Dictionary<string, string[]>();
+    }
+    public IDictionary<string, string[]> Errors { get; }
+}
+```
+
+### Middleware global - Middleware/ExceptionHandlingMiddleware.cs
+
+```csharp
+public class ExceptionHandlingMiddleware
+{
+    private readonly RequestDelegate _next;
+    private readonly ILogger<ExceptionHandlingMiddleware> _logger;
+
+    public ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
+    {
+        _next = next;
+        _logger = logger;
+    }
+
+    public async Task InvokeAsync(HttpContext context)
+    {
+        try { await _next(context); }
+        catch (Exception ex) { await HandleExceptionAsync(context, ex); }
+    }
+
+    private async Task HandleExceptionAsync(HttpContext context, Exception exception)
+    {
+        var correlationId = context.TraceIdentifier;
+        _logger.LogError(exception, "Excepción no controlada | CorrelationId: {CorrelationId} | Path: {Path} | Method: {Method}", 
+            correlationId, context.Request.Path, context.Request.Method);
+
+        var problemDetails = CreateProblemDetails(context, exception, correlationId);
+        context.Response.ContentType = "application/problem+json";
+        context.Response.StatusCode = problemDetails.Status ?? 500;
+
+        var json = JsonSerializer.Serialize(problemDetails, new JsonSerializerOptions 
+        { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        await context.Response.WriteAsync(json);
+    }
+
+    private static ProblemDetails CreateProblemDetails(HttpContext context, Exception exception, string correlationId)
+    {
+        return exception switch
+        {
+            NotFoundException ex => new ProblemDetails
+            {
+                Type = "https://tools.ietf.org/html/rfc7231#section-6.5.4",
+                Title = "Recurso no encontrado",
+                Status = 404,
+                Detail = ex.Message,
+                Instance = context.Request.Path,
+                Extensions = new Dictionary<string, object?>
+                {
+                    ["correlationId"] = correlationId,
+                    ["resourceName"] = ex.ResourceName,
+                    ["resourceKey"] = ex.ResourceKey
+                }
+            },
+            BusinessRuleException ex => new ProblemDetails { /* ... 409 Conflict ... */ },
+            ConcurrencyException ex => new ProblemDetails { /* ... 409 Conflict ... */ },
+            ValidationException ex => new ValidationProblemDetails(ex.Errors) { /* ... 400 ... */ },
+            FluentValidation.ValidationException ex => new ValidationProblemDetails(...) { /* ... 400 ... */ },
+            DbUpdateConcurrencyException => new ProblemDetails { /* ... 409 ... */ },
+            _ => new ProblemDetails
+            {
+                Type = "https://tools.ietf.org/html/rfc7231#section-6.6.1",
+                Title = "Error interno del servidor",
+                Status = 500,
+                Detail = "Ocurrió un error inesperado. Por favor intente más tarde.",
+                Instance = context.Request.Path,
+                Extensions = new Dictionary<string, object?> { ["correlationId"] = correlationId }
+            }
+        };
+    }
+}
+```
+
+### Registro en Program.cs
+
+```csharp
+// ─── Serilog Configuration ───
+builder.Host.UseSerilog((context, services, configuration) => configuration
+    .ReadFrom.Configuration(context.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext()
+    .Enrich.WithCorrelationId()
+    .Enrich.WithMachineName()
+    .Enrich.WithProcessId()
+    .Enrich.WithThreadId()
+    .Enrich.WithEnvironmentName());
+
+// ... DbContext, FluentValidation, Mapster ...
+
+var app = builder.Build();
+
+// ─── Pipeline ───
+app.UseExceptionHandling();  // ← Debe ir ANTES de UseHttpsRedirection
+app.UseHttpsRedirection();
+app.UseSerilogRequestLogging(options =>
+{
+    options.EnrichDiagnosticContext = (dc, httpContext) =>
+    {
+        dc.Set("CorrelationId", httpContext.TraceIdentifier);
+        dc.Set("UserAgent", httpContext.Request.Headers.UserAgent.FirstOrDefault());
+    };
+});
+
+// Auto-migrate
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
+    await db.Database.MigrateAsync();
+}
+```
+
+### Slow Query Interceptor - Logging/EfCoreSlowQueryInterceptor.cs
+
+```csharp
+public class EfCoreSlowQueryInterceptor : IObserver<DbCommandEventData>
+{
+    private readonly ILogger<EfCoreSlowQueryInterceptor> _logger;
+    private readonly int _slowQueryThresholdMs;
+
+    public EfCoreSlowQueryInterceptor(ILogger<EfCoreSlowQueryInterceptor> logger, int slowQueryThresholdMs = 500)
+    {
+        _logger = logger;
+        _slowQueryThresholdMs = slowQueryThresholdMs;
+    }
+
+    public void OnNext(DbCommandEventData value)
+    {
+        if (value is DbCommandEventData.CommandExecutedEventData executed)
+        {
+            var elapsedMs = executed.Duration.TotalMilliseconds;
+            if (elapsedMs >= _slowQueryThresholdMs)
+            {
+                var contextName = value.Context?.GetType().Name ?? "UnknownContext";
+                var commandText = value.Command.CommandText;
+                if (commandText.Length > 2000) commandText = commandText[..2000] + "... [TRUNCATED]";
+
+                var parameters = value.Command.Parameters.Cast<DbParameter>()
+                    .Select(p => $"{p.ParameterName} = {p.Value ?? "NULL"}")
+                    .ToList();
+
+                _logger.LogWarning(
+                    "⚠️ SLOW QUERY DETECTED | Context: {Context} | Duration: {Duration}ms | Threshold: {Threshold}ms | Command: {Command} | Parameters: [{Parameters}]",
+                    contextName, elapsedMs, _slowQueryThresholdMs, commandText, string.Join(", ", parameters));
+            }
+        }
+    }
+    public void OnCompleted() { }
+    public void OnError(Exception error) { }
+}
+```
+
+### Configuración Serilog - appsettings.json
+
+```json
+{
+  "Serilog": {
+    "Using": [ "Serilog.Sinks.Console", "Serilog.Sinks.File" ],
+    "MinimumLevel": {
+      "Default": "Information",
+      "Override": {
+        "Microsoft": "Warning",
+        "Microsoft.AspNetCore": "Warning",
+        "Microsoft.EntityFrameworkCore.Database.Command": "Warning",
+        "System": "Warning"
+      }
+    },
+    "Enrich": [ "FromLogContext", "WithCorrelationId", "WithMachineName", "WithProcessId", "WithThreadId" ],
+    "WriteTo": [
+      {
+        "Name": "Console",
+        "Args": {
+          "outputTemplate": "[{Timestamp:HH:mm:ss} {Level:u3}] {CorrelationId} {SourceContext} - {Message:lj}{NewLine}{Exception}"
+        }
+      },
+      {
+        "Name": "File",
+        "Args": {
+          "path": "logs/inventory-.log",
+          "rollingInterval": "Day",
+          "retainedFileCountLimit": 30,
+          "formatter": "Serilog.Formatting.Compact.CompactJsonFormatter, Serilog.Formatting.Compact"
+        }
+      }
+    ],
+    "Properties": { "Application": "InventoryManagement.Api" }
+  },
+  "EfCore": { "SlowQueryThresholdMs": 500 }
+}
+```
+
+### Respuestas de error unificadas (RFC 7807)
+
+#### 404 Not Found
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc7231#section-6.5.4",
+  "title": "Recurso no encontrado",
+  "status": 404,
+  "detail": "Category con clave '999' no encontrado",
+  "instance": "/api/categories/999",
+  "correlationId": "0HNPE4RR2A1MD:00000001",
+  "resourceName": "Category",
+  "resourceKey": 999
+}
+```
+
+#### 400 Validation Error
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+  "title": "One or more validation errors occurred.",
+  "status": 400,
+  "errors": {
+    "Name": ["El nombre es obligatorio"],
+    "CategoryId": ["La categoría seleccionada no existe"]
+  },
+  "correlationId": "0HNPE4RR2A1MD:00000002"
+}
+```
+
+#### 500 Internal Server Error
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc7231#section-6.6.1",
+  "title": "Error interno del servidor",
+  "status": 500,
+  "detail": "Ocurrió un error inesperado. Por favor intente más tarde.",
+  "instance": "/api/products",
+  "correlationId": "0HNPE4RR2A1MD:00000003"
+}
+```
+
+### Verificación funcional
+
+```bash
+# 1. Build
+dotnet build  # ✅ Compila sin errores
+
+# 2. PostgreSQL
+docker-compose up -d  # ✅ Levanta BD
+
+# 3. Ejecutar
+dotnet run --urls "http://localhost:5263"  # ✅ API corriendo
+
+# 4. Probar endpoints
+GET  http://localhost:5263/api/categories           # 200 OK
+GET  http://localhost:5263/api/products             # 200 OK (paginado)
+GET  http://localhost:5263/api/categories/999       # 404 ProblemDetails + correlationId
+POST http://localhost:5263/api/categories (name="") # 400 ValidationProblemDetails
+```
+
+### Próximos pasos (Fase 3)
+
+* [ ] Entidad `StockMovement` (Entrada/Salida/Ajuste/Transferencia)
+* [ ] Endpoint `POST /api/products/{id}/movements`
+* [ ] Validación: no permitir salida si stock insuficiente
+* [ ] Kardex / Historial: `GET /api/products/{id}/kardex`
+* [ ] Migración EF Core

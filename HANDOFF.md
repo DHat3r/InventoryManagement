@@ -1,8 +1,8 @@
 # 📦 HANDOFF - InventoryManagement.Api
 
 > **Proyecto:** Backend ASP.NET Core 8.0 para Manejo de Inventario  
-> **Estado actual:** ✅ Fase 0 y Fase 1 completadas y probadas  
-> **Próximo:** Fase 2 - Error Handling Global + Logging (Serilog)  
+> **Estado actual:** ✅ Fase 0, Fase 1 y **Fase 2 completadas** y probadas  
+> **Próximo:** Fase 3 - Stock Movements (Kardex, movimientos entrada/salida)  
 > **Fecha:** 19/10/2026
 
 ---
@@ -13,8 +13,8 @@
 |------|--------|-------------|
 | **0 - Fundación** | ✅ | EF Core + PostgreSQL + Entidades + Migración + CRUD básico |
 | **1 - DTOs/Validación/Mapeo** | ✅ | FluentValidation + Mapster + DTOs + ApiResponse + ProblemDetails |
-| **2 - Error Handling + Logging** | 🔄 **SIGUIENTE** | Middleware global + Excepciones dominio + Serilog + Correlation ID |
-| **3 - Stock Movements** | ⏳ | StockMovement entity, Kardex, movimientos entrada/salida |
+| **2 - Error Handling + Logging** | ✅ | Middleware global + Excepciones dominio + Serilog + Correlation ID |
+| **3 - Stock Movements** | 🔄 **SIGUIENTE** | StockMovement entity, Kardex, movimientos entrada/salida |
 | **4 - Auth JWT** | ⏳ | Identity + JWT + Roles + Refresh tokens |
 | **5 - Tests** | ⏳ | xUnit + TestContainers + Integration tests |
 | **6 - Observabilidad** | ⏳ | Health checks + Métricas + Versionado |
@@ -182,13 +182,26 @@ DELETE /api/products/{id}                 # Soft delete
   }
 }
 
-// No encontrado (404)
+// No encontrado (404) - RFC 7807 ProblemDetails
 {
-  "success": false,
-  "data": null,
-  "message": "Producto no encontrado",
-  "errors": ["Producto no encontrado"],
-  "meta": null
+  "type": "https://tools.ietf.org/html/rfc7231#section-6.5.4",
+  "title": "Recurso no encontrado",
+  "status": 404,
+  "detail": "Category con clave '999' no encontrado",
+  "instance": "/api/categories/999",
+  "correlationId": "0HNPE4RR2A1MD:00000001",
+  "resourceName": "Category",
+  "resourceKey": 999
+}
+
+// Error interno (500) - RFC 7807 ProblemDetails
+{
+  "type": "https://tools.ietf.org/html/rfc7231#section-6.6.1",
+  "title": "Error interno del servidor",
+  "status": 500,
+  "detail": "Ocurrió un error inesperado. Por favor intente más tarde.",
+  "instance": "/api/products",
+  "correlationId": "0HNPE4RR2A1MD:00000002"
 }
 ```
 
@@ -238,6 +251,16 @@ DELETE /api/products/{id}                 # Soft delete
 <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.0" />
 <PackageReference Include="Mapster" Version="7.4.0" />
 <PackageReference Include="Mapster.DependencyInjection" Version="1.0.1" />
+
+<!-- Fase 2 -->
+<PackageReference Include="Serilog.AspNetCore" Version="8.0.1" />
+<PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+<PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+<PackageReference Include="Serilog.Enrichers.CorrelationId" Version="3.0.1" />
+<PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
+<PackageReference Include="Serilog.Enrichers.Process" Version="3.0.0" />
+<PackageReference Include="Serilog.Enrichers.Thread" Version="3.0.0" />
+<PackageReference Include="Serilog.Formatting.Compact" Version="2.0.0" />
 ```
 
 ---
@@ -302,26 +325,57 @@ InventoryManagement.Api/
 └── Program.cs                          # Registrar middleware + Serilog
 ```
 
-### Paquetes a instalar para Fase 2
+### Fase 2 - IMPLEMENTADA ✅
 
-```bash
-dotnet add package Serilog.AspNetCore --version 8.0.1
-dotnet add package Serilog.Sinks.Console --version 6.0.0
-dotnet add package Serilog.Sinks.File --version 6.0.0
-dotnet add package Serilog.Enrichers.CorrelationId --version 3.0.1
+#### Código agregado:
+
+**Excepciones de dominio** (`Common/Exceptions/`):
+- `NotFoundException` - 404 con resourceName/key
+- `BusinessRuleException` - 409 Conflict
+- `ConcurrencyException` - 409 Conflict  
+- `ValidationException` - 400 con diccionario de errores
+
+**Middleware global** (`Middleware/ExceptionHandlingMiddleware.cs`):
+- Captura TODAS las excepciones
+- Mapea a ProblemDetails RFC 7807 unificado
+- Incluye `correlationId` (RequestId) en todos los errores
+- Loggea excepción completa con contexto
+
+**Serilog configurado** (`Program.cs` + `appsettings.json`):
+- Console (formato legible) + File (JSON compacto, rolling daily)
+- Enriquecedores: CorrelationId, MachineName, ProcessId, ThreadId, Environment
+- Request logging con correlationId automático
+
+**Slow Query Interceptor** (`Logging/EfCoreSlowQueryInterceptor.cs`):
+- Umbral configurable (`EfCore:SlowQueryThresholdMs`: 500ms prod, 200ms dev)
+- Loggea query + parámetros + duración + contexto
+
+#### Estructura final:
+```
+InventoryManagement.Api/
+├── Common/Exceptions/          # ✅ FASE 2
+│   ├── NotFoundException.cs
+│   ├── BusinessRuleException.cs
+│   ├── ConcurrencyException.cs
+│   └── ValidationException.cs
+├── Middleware/                 # ✅ FASE 2
+│   └── ExceptionHandlingMiddleware.cs
+├── Logging/                    # ✅ FASE 2
+│   └── EfCoreSlowQueryInterceptor.cs
 ```
 
 ---
 
 ## 📋 Checklist rápido para continuar
 
-- [ ] Clonar/copiar proyecto en nuevo computador
-- [ ] `dotnet restore` + `dotnet build` → ✅ compila
-- [ ] `docker-compose up -d` → PostgreSQL corriendo
-- [ ] `dotnet ef database update` → BD sincronizada
-- [ ] `dotnet run` → API en http://localhost:5263/swagger
-- [ ] Probar endpoints básicos (GET /api/categories, GET /api/products)
-- [ ] **Iniciar Fase 2**: ExceptionHandlingMiddleware + Serilog
+- [x] Clonar/copiar proyecto en nuevo computador
+- [x] `dotnet restore` + `dotnet build` → ✅ compila
+- [x] `docker-compose up -d` → PostgreSQL corriendo
+- [x] `dotnet ef database update` → BD sincronizada
+- [x] `dotnet run` → API en http://localhost:5263/swagger
+- [x] Probar endpoints básicos (GET /api/categories, GET /api/products)
+- [x] **Fase 2 COMPLETA**: ExceptionHandlingMiddleware + Serilog + ProblemDetails RFC 7807
+- [ ] **Iniciar Fase 3**: StockMovement entity, Kardex, movimientos entrada/salida
 
 ---
 

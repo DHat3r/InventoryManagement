@@ -1,7 +1,7 @@
 # Backend TODO - InventoryManagement.Api
 
 > **Objetivo:** Backend completo y robusto para que el frontend solo "llegue y conecte"  
-> **Estado actual:** ✅ EF Core + PostgreSQL + CRUD básico funcionando
+> **Estado actual:** ✅ Fase 0, 1 y 2 completadas (EF Core + DTOs/Validación + Error Handling + Logging)
 
 ---
 
@@ -56,19 +56,22 @@
 
 ---
 
-## 🟠 FASE 2 - Manejo de Errores y Logging (Prioridad ALTA)
+## ✅ FASE 2 - Manejo de Errores y Logging (Prioridad ALTA) - **COMPLETADA**
 
 ### 2.1 Excepciones y ProblemDetails
-- [ ] Middleware global `ExceptionHandlingMiddleware`
-- [ ] Clases: `NotFoundException`, `BusinessRuleException`, `ConcurrencyException`
-- [ ] RFC 7807 ProblemDetails estándar
-- [ ] Mapear excepciones a códigos HTTP apropiados
+- [x] Middleware global `ExceptionHandlingMiddleware` (`Middleware/ExceptionHandlingMiddleware.cs`)
+- [x] Clases: `NotFoundException`, `BusinessRuleException`, `ConcurrencyException`, `ValidationException` (`Common/Exceptions/`)
+- [x] RFC 7807 ProblemDetails estándar para 404, 409, 422, 500
+- [x] Mapear excepciones a códigos HTTP apropiados
+- [x] Correlation ID en todos los errores (RequestId)
 
 ### 2.2 Logging estructurado
-- [ ] Instalar `Serilog.AspNetCore` + `Serilog.Sinks.Console` + `Serilog.Sinks.File`
-- [ ] Configurar en `Program.cs` (appsettings)
-- [ ] Correlation ID (request tracing)
-- [ ] Log de queries EF Core lentas (umbral configurable)
+- [x] Instalar `Serilog.AspNetCore` + `Serilog.Sinks.Console` + `Serilog.Sinks.File`
+- [x] Configurar en `Program.cs` + `appsettings.json` / `appsettings.Development.json`
+- [x] Correlation ID (request tracing) con `Serilog.Enrichers.CorrelationId`
+- [x] Log de queries EF Core lentas - `EfCoreSlowQueryInterceptor` (umbral configurable: 500ms prod / 200ms dev)
+- [x] Enriquecedores: MachineName, ProcessId, ThreadId, Environment
+- [x] File sink: JSON compacto, rolling daily, retención 30 días (prod) / 7 días (dev)
 
 ---
 
@@ -213,13 +216,15 @@
 
 ## 🎯 PRÓXIMO PASO RECOMENDADO
 
-**Iniciar Fase 2:** Manejo de Errores Global + Logging (Serilog)
+**Iniciar Fase 3:** Stock Movements (Kardex, movimientos entrada/salida)
 
 Incluiría:
-1. Middleware `ExceptionHandlingMiddleware` global
-2. Excepciones de dominio: `NotFoundException`, `BusinessRuleException`, `ConcurrencyException`
-3. RFC 7807 ProblemDetails estándar para todos los errores
-3. Serilog configurado (Console + File) con correlation ID
-4. Log de queries EF Core lentas
+1. Entidad `StockMovement` (Tipo: Entrada/Salida/Ajuste/Transferencia, Quantity, Reason, Reference, UserId, Timestamp)
+2. Endpoint `POST /api/products/{id}/movements` con validación: no salida si stock insuficiente
+3. Endpoint `GET /api/products/{id}/kardex` (historial paginado)
+4. Actualizar `Product.StockQuantity` automáticamente al crear movimiento
+5. Validaciones FluentValidation para `CreateStockMovementDto`
+6. DTOs y Mapster config
+7. Migración EF Core
 
-¿Quieres continuar con la **Fase 2**?
+¿Quieres continuar con la **Fase 3**?

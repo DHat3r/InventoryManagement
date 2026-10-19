@@ -2,13 +2,28 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using FluentValidation;
 using Mapster;
+using Serilog;
+using Serilog.Enrichers.CorrelationId;
 using InventoryManagement.Api.Models;
 using InventoryManagement.Api.DTOs;
 using InventoryManagement.Api.Validators;
 using InventoryManagement.Api.Mapping;
 using InventoryManagement.Api.Common;
+using InventoryManagement.Api.Common.Exceptions;
+using InventoryManagement.Api.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ─── Serilog Configuration ───
+builder.Host.UseSerilog((context, services, configuration) => configuration
+    .ReadFrom.Configuration(context.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext()
+    .Enrich.WithCorrelationId()
+    .Enrich.WithMachineName()
+    .Enrich.WithProcessId()
+    .Enrich.WithThreadId()
+    .Enrich.WithEnvironmentName());
 
 // ─── Services ───
 builder.Services.AddEndpointsApiExplorer();
@@ -37,14 +52,25 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// Exception Handling Middleware (must be early in pipeline)
+app.UseExceptionHandling();
+
 app.UseHttpsRedirection();
+app.UseSerilogRequestLogging(options =>
+{
+    options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+    {
+        diagnosticContext.Set("CorrelationId", httpContext.TraceIdentifier);
+        diagnosticContext.Set("UserAgent", httpContext.Request.Headers.UserAgent.FirstOrDefault());
+    };
+});
 
 // Auto-migrate on startup (dev)
 if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
-    db.Database.Migrate();
+    await db.Database.MigrateAsync();
 }
 
 // ─── Helpers ───
@@ -53,9 +79,6 @@ static IResult ValidationProblem(FluentValidation.Results.ValidationResult resul
 
 static ApiResponse<T> OkResponse<T>(T data, string? message = null, object? meta = null)
     => ApiResponse<T>.Ok(data, message, meta);
-
-static ApiResponse<T> FailResponse<T>(string error, string? message = null)
-    => ApiResponse<T>.Fail(error, message);
 
 // ============================================================
 // CATEGORIES
@@ -82,7 +105,9 @@ categories.MapGet("/{id:int}", async (int id, InventoryDbContext db) =>
         .Where(c => c.Id == id)
         .ProjectToType<CategoryDto>()
         .FirstOrDefaultAsync();
-    return entity is not null ? Results.Ok(OkResponse(entity)) : Results.NotFound(FailResponse<CategoryDto>("Categoría no encontrada"));
+    return entity is not null 
+        ? Results.Ok(OkResponse(entity)) 
+        : throw new NotFoundException("Category", id);
 })
 .WithName("GetCategoryById")
 .WithOpenApi();
@@ -110,7 +135,7 @@ categories.MapPut("/{id:int}", async (int id, UpdateCategoryDto dto, IValidator<
     if (!validation.IsValid) return ValidationProblem(validation);
 
     var entity = await db.Categories.FindAsync(id);
-    if (entity is null) return Results.NotFound(FailResponse<CategoryDto>("Categoría no encontrada"));
+    if (entity is null) throw new NotFoundException("Category", id);
 
     dto.Adapt(entity);
     await db.SaveChangesAsync();
@@ -125,7 +150,7 @@ categories.MapPut("/{id:int}", async (int id, UpdateCategoryDto dto, IValidator<
 categories.MapDelete("/{id:int}", async (int id, InventoryDbContext db) =>
 {
     var entity = await db.Categories.FindAsync(id);
-    if (entity is null) return Results.NotFound(FailResponse<CategoryDto>("Categoría no encontrada"));
+    if (entity is null) throw new NotFoundException("Category", id);
 
     entity.IsActive = false;
     entity.UpdatedAt = DateTime.UtcNow;
@@ -214,7 +239,9 @@ products.MapGet("/{id:int}", async (int id, InventoryDbContext db) =>
         .Where(p => p.Id == id)
         .ProjectToType<ProductDto>()
         .FirstOrDefaultAsync();
-    return entity is not null ? Results.Ok(OkResponse(entity)) : Results.NotFound(FailResponse<ProductDto>("Producto no encontrado"));
+    return entity is not null 
+        ? Results.Ok(OkResponse(entity)) 
+        : throw new NotFoundException("Product", id);
 })
 .WithName("GetProductById")
 .WithOpenApi();
@@ -259,7 +286,7 @@ products.MapPut("/{id:int}", async (int id, UpdateProductDto dto, IValidator<Upd
     if (!validation.IsValid) return ValidationProblem(validation);
 
     var entity = await db.Products.FindAsync(id);
-    if (entity is null) return Results.NotFound(FailResponse<ProductDto>("Producto no encontrado"));
+    if (entity is null) throw new NotFoundException("Product", id);
 
     // Pasar ID al validador para unicidad de SKU
     if (validator is UpdateProductValidator upv) upv.SetProductId(id);
@@ -282,7 +309,7 @@ products.MapPatch("/{id:int}/stock", async (int id, UpdateStockDto dto, IValidat
     if (!validation.IsValid) return ValidationProblem(validation);
 
     var entity = await db.Products.FindAsync(id);
-    if (entity is null) return Results.NotFound(FailResponse<ProductDto>("Producto no encontrado"));
+    if (entity is null) throw new NotFoundException("Product", id);
 
     dto.Adapt(entity);
     await db.SaveChangesAsync();
@@ -297,7 +324,7 @@ products.MapPatch("/{id:int}/stock", async (int id, UpdateStockDto dto, IValidat
 products.MapDelete("/{id:int}", async (int id, InventoryDbContext db) =>
 {
     var entity = await db.Products.FindAsync(id);
-    if (entity is null) return Results.NotFound(FailResponse<ProductDto>("Producto no encontrado"));
+    if (entity is null) throw new NotFoundException("Product", id);
 
     entity.IsActive = false;
     entity.UpdatedAt = DateTime.UtcNow;
