@@ -63,7 +63,7 @@ namespace InventoryManagement.Api.Migrations
                         new
                         {
                             Id = 1,
-                            CreatedAt = new DateTime(2026, 10, 19, 14, 59, 15, 671, DateTimeKind.Utc).AddTicks(2243),
+                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6667),
                             Description = "Productos electrónicos y tecnológicos",
                             IsActive = true,
                             Name = "Electrónica"
@@ -71,7 +71,7 @@ namespace InventoryManagement.Api.Migrations
                         new
                         {
                             Id = 2,
-                            CreatedAt = new DateTime(2026, 10, 19, 14, 59, 15, 671, DateTimeKind.Utc).AddTicks(2245),
+                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6668),
                             Description = "Prendas de vestir y accesorios",
                             IsActive = true,
                             Name = "Ropa"
@@ -79,7 +79,7 @@ namespace InventoryManagement.Api.Migrations
                         new
                         {
                             Id = 3,
-                            CreatedAt = new DateTime(2026, 10, 19, 14, 59, 15, 671, DateTimeKind.Utc).AddTicks(2248),
+                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6669),
                             Description = "Artículos para el hogar y decoración",
                             IsActive = true,
                             Name = "Hogar"
@@ -87,7 +87,7 @@ namespace InventoryManagement.Api.Migrations
                         new
                         {
                             Id = 4,
-                            CreatedAt = new DateTime(2026, 10, 19, 14, 59, 15, 671, DateTimeKind.Utc).AddTicks(2250),
+                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6670),
                             Description = "Equipamiento y ropa deportiva",
                             IsActive = true,
                             Name = "Deportes"
@@ -170,7 +170,7 @@ namespace InventoryManagement.Api.Migrations
                             Id = 1,
                             CategoryId = 1,
                             Cost = 950.00m,
-                            CreatedAt = new DateTime(2026, 10, 19, 14, 59, 15, 671, DateTimeKind.Utc).AddTicks(2467),
+                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6832),
                             Description = "Laptop para gaming de alto rendimiento",
                             IsActive = true,
                             MinStockLevel = 5,
@@ -185,7 +185,7 @@ namespace InventoryManagement.Api.Migrations
                             Id = 2,
                             CategoryId = 1,
                             Cost = 25.00m,
-                            CreatedAt = new DateTime(2026, 10, 19, 14, 59, 15, 671, DateTimeKind.Utc).AddTicks(2470),
+                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6833),
                             Description = "Mouse ergonómico inalámbrico",
                             IsActive = true,
                             MinStockLevel = 10,
@@ -200,7 +200,7 @@ namespace InventoryManagement.Api.Migrations
                             Id = 3,
                             CategoryId = 1,
                             Cost = 45.00m,
-                            CreatedAt = new DateTime(2026, 10, 19, 14, 59, 15, 671, DateTimeKind.Utc).AddTicks(2473),
+                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6835),
                             Description = "Teclado mecánico RGB",
                             IsActive = true,
                             MinStockLevel = 8,
@@ -215,7 +215,7 @@ namespace InventoryManagement.Api.Migrations
                             Id = 4,
                             CategoryId = 4,
                             Cost = 12.00m,
-                            CreatedAt = new DateTime(2026, 10, 19, 14, 59, 15, 671, DateTimeKind.Utc).AddTicks(2475),
+                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6836),
                             Description = "Camiseta transpirable para deporte",
                             IsActive = true,
                             MinStockLevel = 20,
@@ -230,7 +230,7 @@ namespace InventoryManagement.Api.Migrations
                             Id = 5,
                             CategoryId = 4,
                             Cost = 65.00m,
-                            CreatedAt = new DateTime(2026, 10, 19, 14, 59, 15, 671, DateTimeKind.Utc).AddTicks(2477),
+                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6838),
                             Description = "Zapatillas para running profesionales",
                             IsActive = true,
                             MinStockLevel = 10,
@@ -245,7 +245,7 @@ namespace InventoryManagement.Api.Migrations
                             Id = 6,
                             CategoryId = 3,
                             Cost = 18.00m,
-                            CreatedAt = new DateTime(2026, 10, 19, 14, 59, 15, 671, DateTimeKind.Utc).AddTicks(2480),
+                            CreatedAt = new DateTime(2026, 10, 19, 21, 47, 48, 616, DateTimeKind.Utc).AddTicks(6839),
                             Description = "Lámpara de escritorio LED regulable",
                             IsActive = true,
                             MinStockLevel = 10,
@@ -257,6 +257,56 @@ namespace InventoryManagement.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("InventoryManagement.Api.Models.StockMovement", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<int>("NewStock")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PreviousStock")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<byte>("Type")
+                        .HasColumnType("smallint");
+
+                    b.Property<decimal?>("UnitCost")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Reference");
+
+                    b.HasIndex("Type");
+
+                    b.HasIndex("ProductId", "CreatedAt");
+
+                    b.ToTable("stock_movements", (string)null);
+                });
+
             modelBuilder.Entity("InventoryManagement.Api.Models.Product", b =>
                 {
                     b.HasOne("InventoryManagement.Api.Models.Category", "Category")
@@ -266,6 +316,17 @@ namespace InventoryManagement.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("InventoryManagement.Api.Models.StockMovement", b =>
+                {
+                    b.HasOne("InventoryManagement.Api.Models.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Product");
                 });
 
             modelBuilder.Entity("InventoryManagement.Api.Models.Category", b =>

@@ -1,7 +1,7 @@
 # Backend TODO - InventoryManagement.Api
 
 > **Objetivo:** Backend completo y robusto para que el frontend solo "llegue y conecte"  
-> **Estado actual:** ✅ Fase 0, 1 y 2 completadas (EF Core + DTOs/Validación + Error Handling + Logging)
+> **Estado actual:** ✅ Fase 0, 1, 2 y **3 completadas** (EF Core + DTOs/Validación + Error Handling + Logging + **Stock Movements/Kardex**)
 
 ---
 
@@ -75,14 +75,19 @@
 
 ---
 
-## 🟡 FASE 3 - Funcionalidades de Negocio Core (Prioridad MEDIA-ALTA)
+## 🟡 FASE 3 - Funcionalidades de Negocio Core (Prioridad MEDIA-ALTA) - **COMPLETADA ✅**
 
 ### 3.1 Stock y Movimientos
-- [ ] Entidad `StockMovement` (Entrada/Salida/Ajuste/Transferencia)
-- [ ] Endpoints: `POST /api/products/{id}/movements`
-- [ ] Validación: no permitir salida si stock insuficiente
-- [ ] Kardex / Historial de movimientos por producto
-- [ ] Endpoint: `GET /api/products/{id}/kardex`
+- [x] Entidad `StockMovement` (Entrada/Salida/Ajuste)
+- [x] Endpoint: `POST /api/products/{id}/movements`
+- [x] Validación: no permitir salida si stock insuficiente
+- [x] Kardex / Historial de movimientos por producto
+- [x] Endpoint: `GET /api/products/{id}/kardex` (paginado, filtros)
+- [x] Endpoint: `GET /api/products/{id}/kardex/summary` (resumen valorado)
+- [x] Convención contable: Quantity siempre positivo, Type define signo
+- [x] UnitCost para valoración histórica (PEPS/UEPS/Promedio)
+- [x] Transacción atómica: movimiento + actualización stock
+- [x] Migración EF Core `AddStockMovements`
 
 ### 3.2 Categorías - Jerarquía (opcional)
 - [ ] `ParentCategoryId` nullable en Category (autoreferencia)
@@ -203,7 +208,8 @@
 | ✅ Paginación, filtros, búsqueda | ✅ |
 | ✅ Validación robusta (FluentValidation) | ✅ |
 | ✅ DTOs separados de Entidades | ✅ |
-| ✅ Manejo errores global (ProblemDetails) | ✅ (ValidationProblem) |
+| ✅ Manejo errores global (ProblemDetails) | ✅ |
+| ✅ **Stock Movements / Kardex** | ✅ |
 | ✅ Auth JWT + Roles | ⬜ |
 | ✅ Health checks | ⬜ |
 | ✅ OpenAPI completo con ejemplos | ⬜ |
@@ -216,15 +222,4 @@
 
 ## 🎯 PRÓXIMO PASO RECOMENDADO
 
-**Iniciar Fase 3:** Stock Movements (Kardex, movimientos entrada/salida)
-
-Incluiría:
-1. Entidad `StockMovement` (Tipo: Entrada/Salida/Ajuste/Transferencia, Quantity, Reason, Reference, UserId, Timestamp)
-2. Endpoint `POST /api/products/{id}/movements` con validación: no salida si stock insuficiente
-3. Endpoint `GET /api/products/{id}/kardex` (historial paginado)
-4. Actualizar `Product.StockQuantity` automáticamente al crear movimiento
-5. Validaciones FluentValidation para `CreateStockMovementDto`
-6. DTOs y Mapster config
-7. Migración EF Core
-
-¿Quieres continuar con la **Fase 3**?
+**Iniciar Fase 4:** Seguridad y Autenticación (JWT + Identity + Roles)

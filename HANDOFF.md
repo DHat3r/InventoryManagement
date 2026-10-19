@@ -1,8 +1,8 @@
 # 📦 HANDOFF - InventoryManagement.Api
 
 > **Proyecto:** Backend ASP.NET Core 8.0 para Manejo de Inventario  
-> **Estado actual:** ✅ Fase 0, Fase 1 y **Fase 2 completadas** y probadas  
-> **Próximo:** Fase 3 - Stock Movements (Kardex, movimientos entrada/salida)  
+> **Estado actual:** ✅ Fase 0, 1, 2 y **Fase 3 completadas** y probadas  
+> **Próximo:** Fase 4 - Auth JWT + Identity + Roles  
 > **Fecha:** 19/10/2026
 
 ---
@@ -14,8 +14,8 @@
 | **0 - Fundación** | ✅ | EF Core + PostgreSQL + Entidades + Migración + CRUD básico |
 | **1 - DTOs/Validación/Mapeo** | ✅ | FluentValidation + Mapster + DTOs + ApiResponse + ProblemDetails |
 | **2 - Error Handling + Logging** | ✅ | Middleware global + Excepciones dominio + Serilog + Correlation ID |
-| **3 - Stock Movements** | 🔄 **SIGUIENTE** | StockMovement entity, Kardex, movimientos entrada/salida |
-| **4 - Auth JWT** | ⏳ | Identity + JWT + Roles + Refresh tokens |
+| **3 - Stock Movements** | ✅ **COMPLETADA** | StockMovement entity, Kardex, movimientos entrada/salida/ajuste |
+| **4 - Auth JWT** | 🔄 **SIGUIENTE** | Identity + JWT + Roles + Refresh tokens |
 | **5 - Tests** | ⏳ | xUnit + TestContainers + Integration tests |
 | **6 - Observabilidad** | ⏳ | Health checks + Métricas + Versionado |
 | **7 - Performance** | ⏳ | Redis cache + Background jobs |
@@ -96,18 +96,23 @@ Manejo de Inventario/
     │   └── ApiResponse.cs             # ApiResponse<T>, PagedResult<T>
     ├── DTOs/
     │   ├── CategoryDtos.cs            # CategoryDto, Create/Update, CategoryRefDto
-    │   └── ProductDtos.cs             # ProductDto, ProductListDto, Create/Update, UpdateStock, ProductFilterDto
+    │   ├── ProductDtos.cs             # ProductDto, ProductListDto, Create/Update, UpdateStock, ProductFilterDto
+    │   └── StockMovementDtos.cs       # CreateStockMovementDto, StockMovementDto, StockMovementFilterDto, KardexSummaryDto
     ├── Validators/
     │   ├── CategoryValidators.cs      # Create/Update validators
-    │   └── ProductValidators.cs       # Create/Update/Stock/Filter validators (con validación BD)
+    │   ├── ProductValidators.cs       # Create/Update/Stock/Filter validators (con validación BD)
+    │   └── StockMovementValidators.cs # CreateStockMovementValidator, StockMovementFilterValidator
     ├── Mapping/
     │   └── MapsterConfig.cs           # Config Mapster completa (Entity↔DTO)
     ├── Models/
     │   ├── Category.cs                # Entidad + navegación Products
     │   ├── Product.cs                 # Entidad + FK CategoryId + navegación Category
+    │   ├── MovementType.cs            # enum: Entrada=1, Salida=2, Ajuste=3
+    │   ├── StockMovement.cs           # Entidad Kardex (trazabilidad contable)
     │   └── InventoryDbContext.cs      # DbContext + Fluent API + Seed data
     └── Migrations/
         ├── 20261019145915_InitialCreate.cs
+        ├── 20261019214749_AddStockMovements.cs
         └── InventoryDbContextModelSnapshot.cs
 ```
 
@@ -136,6 +141,12 @@ POST   /api/products                      # Crear (valida SKU único, CategoryId
 PUT    /api/products/{id}                 # Actualizar completo
 PATCH  /api/products/{id}/stock           # Actualizar solo stock { "quantity": 10 }
 DELETE /api/products/{id}                 # Soft delete
+
+# Stock Movements / Kardex (Fase 3) ✅
+POST   /api/products/{id}/movements       # Registrar movimiento (Entrada/Salida/Ajuste)
+GET    /api/products/{id}/kardex          # Historial paginado + filtros
+        ?page=1&pageSize=50&type=Salida&dateFrom=2026-01-01&reference=FV-
+GET    /api/products/{id}/kardex/summary  # Resumen valorado (para contador)
 ```
 
 ### Respuestas estandarizadas

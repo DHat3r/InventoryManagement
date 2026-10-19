@@ -1228,8 +1228,328 @@ POST http://localhost:5263/api/categories (name="") # 400 ValidationProblemDetai
 
 ### Próximos pasos (Fase 3)
 
-* [ ] Entidad `StockMovement` (Entrada/Salida/Ajuste/Transferencia)
-* [ ] Endpoint `POST /api/products/{id}/movements`
-* [ ] Validación: no permitir salida si stock insuficiente
-* [ ] Kardex / Historial: `GET /api/products/{id}/kardex`
-* [ ] Migración EF Core
+* [x] Entidad `StockMovement` (Entrada/Salida/Ajuste)
+* [x] Endpoint `POST /api/products/{id}/movements`
+* [x] Validación: no permitir salida si stock insuficiente
+* [x] Kardex / Historial: `GET /api/products/{id}/kardex`
+* [x] Resumen valorado: `GET /api/products/{id}/kardex/summary`
+* [x] Migración EF Core
+
+***
+
+## 📦 FASE 3 - Stock Movements / Kardex (Agregado 19/10/2026)
+
+### Objetivo
+
+Implementar trazabilidad completa de movimientos de stock (Kardex) con convención contable:
+- **Quantity siempre positivo** — el signo lo determina `MovementType`
+- **Valoración histórica** — `UnitCost` guardado en cada movimiento para PEPS/UEPS/Promedio
+- **Transaccionalidad** — movimiento + actualización stock en misma transacción
+
+### Paquetes adicionales
+
+> **Sin paquetes nuevos** — Solo entidades, DTOs, validadores y endpoints.
+
+### Nuevos archivos creados
+
+```
+InventoryManagement.Api/
+├── Models/
+│   ├── MovementType.cs          # enum: Entrada=1, Salida=2, Ajuste=3
+│   └── StockMovement.cs         # Entidad Kardex
+├── DTOs/
+│   └── StockMovementDtos.cs     # CreateStockMovementDto, StockMovementDto, StockMovementListDto, StockMovementFilterDto, KardexSummaryDto
+├── Validators/
+│   └── StockMovementValidators.cs  # CreateStockMovementValidator (BD), StockMovementFilterValidator
+└── Mapping/
+    └── MapsterConfig.cs         # + configs StockMovement ↔ DTOs
+```
+
+### Entidad StockMovement
+
+```csharp
+public class StockMovement
+{
+    [Key] public int Id { get; set; }
+    [Required] public int ProductId { get; set; }
+    [Required] public MovementType Type { get; set; }        // Entrada / Salida / Ajuste
+    [Required, Range(1, int.MaxValue)] public int Quantity { get; set; }  // Siempre > 0
+    [MaxLength(200)] public string? Reason { get; set; }     // "Compra", "Venta", "Ajuste inventario", "Merma"
+    [MaxLength(100)] public string? Reference { get; set; }  // Nº factura, orden, nota crédito
+    [Required] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    [Column(TypeName = "decimal(18,2)")] public decimal? UnitCost { get; set; }  // Costo unitario al momento
+    [Required] public int PreviousStock { get; set; }        // Stock antes
+    [Required] public int NewStock { get; set; }             // Stock después
+
+    [ForeignKey(nameof(ProductId))]
+    public virtual Product Product { get; set; } = null!;
+}
+
+public enum MovementType : byte
+{
+    Entrada = 1,   // Compra, devolución proveedor, ajuste +
+    Salida = 2,    // Venta, consumo interno, merma, ajuste -
+    Ajuste = 3     // Inventario físico, recuento (dirección por UnitCost)
+}
+```
+
+### Convención contable (clave para el contador)
+
+| Tipo | Quantity | UnitCost | Efecto Stock | Caso de uso |
+|------|----------|----------|--------------|-------------|
+| **Entrada** | +N | **Requerido** | `+N` | Compra, devolución proveedor |
+| **Salida** | +N | Opcional (usa costo promedio) | `-N` | Venta, consumo, merma |
+| **Ajuste** | +N | **Con valor = Entrada**, **Sin valor = Salida** | `±N` | Inventario físico, recuento, merma detectada |
+
+> **Ventaja**: El contador ve movimientos claros: "Entrada 10 @ $900", "Salida 5 @ $950", "Ajuste +3 @ $950", "Ajuste -2". No hay cantidades negativas confusas.
+
+### DTOs principales
+
+```csharp
+// Entrada - crear movimiento
+public record CreateStockMovementDto(
+    [Required] MovementType Type,
+    [Required, Range(1, int.MaxValue)] int Quantity,
+    [MaxLength(200)] string? Reason = null,
+    [MaxLength(100)] string? Reference = null,
+    [Range(0, double.MaxValue)] decimal? UnitCost = null
+);
+
+// Salida - kardex completo
+public record StockMovementDto(
+    int Id, int ProductId, MovementType Type, int Quantity,
+    string? Reason, string? Reference, DateTime CreatedAt,
+    decimal? UnitCost, int PreviousStock, int NewStock
+);
+
+// Salida - listado ligero
+public record StockMovementListDto(
+    int Id, MovementType Type, int Quantity,
+    string? Reason, string? Reference, DateTime CreatedAt,
+    decimal? UnitCost, int PreviousStock, int NewStock
+);
+
+// Filtros kardex
+public record StockMovementFilterDto(
+    int Page = 1,
+    [Range(1, 100)] int PageSize = 50,
+    MovementType? Type = null,
+    DateTime? DateFrom = null,
+    DateTime? DateTo = null,
+    string? Reference = null
+);
+
+// Resumen valorado
+public record KardexSummaryDto(
+    int ProductId, string ProductName, string ProductSKU,
+    int CurrentStock, decimal AverageCost, decimal StockValue,
+    int TotalEntradas, int TotalSalidas, int TotalAjustes,
+    decimal TotalEntradasValue, decimal TotalSalidasValue
+);
+```
+
+### Validaciones de negocio (CreateStockMovementValidator)
+
+```csharp
+public class CreateStockMovementValidator : AbstractValidator<CreateStockMovementDto>
+{
+    private readonly InventoryDbContext _db;
+    private int _productId;
+
+    public CreateStockMovementValidator(InventoryDbContext db) { _db = db; ... }
+
+    // Reglas:
+    // - ProductId existe y está activo
+    // - Entrada: Quantity > 0, UnitCost requerido
+    // - Salida: Quantity > 0, StockQuantity >= Quantity (bloquea si insuficiente)
+    // - Ajuste: Quantity > 0, stock final >= 0
+    // - UnitCost >= 0 cuando presente
+}
+```
+
+### Fluent API en InventoryDbContext
+
+```csharp
+modelBuilder.Entity<StockMovement>(entity =>
+{
+    entity.ToTable("stock_movements");
+    entity.HasKey(e => e.Id);
+    entity.Property(e => e.Type).HasConversion<byte>().IsRequired();
+    entity.Property(e => e.Quantity).IsRequired();
+    entity.Property(e => e.Reason).HasMaxLength(200);
+    entity.Property(e => e.Reference).HasMaxLength(100);
+    entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+    entity.Property(e => e.UnitCost).HasColumnType("decimal(18,2)");
+    entity.Property(e => e.PreviousStock).IsRequired();
+    entity.Property(e => e.NewStock).IsRequired();
+    
+    // Índices para consultas kardex
+    entity.HasIndex(e => new { e.ProductId, e.CreatedAt });
+    entity.HasIndex(e => e.Type);
+    entity.HasIndex(e => e.Reference);
+    
+    entity.HasOne(e => e.Product)
+          .WithMany()
+          .HasForeignKey(e => e.ProductId)
+          .OnDelete(DeleteBehavior.Restrict);
+});
+```
+
+### Migración generada (20261019214749_AddStockMovements)
+
+```sql
+CREATE TABLE stock_movements (
+    "Id" integer GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    "ProductId" integer NOT NULL,
+    "Type" smallint NOT NULL,
+    "Quantity" integer NOT NULL,
+    "Reason" character varying(200),
+    "Reference" character varying(100),
+    "CreatedAt" timestamp with time zone NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+    "UnitCost" numeric(18,2),
+    "PreviousStock" integer NOT NULL,
+    "NewStock" integer NOT NULL,
+    CONSTRAINT "FK_stock_movements_products_ProductId" 
+        FOREIGN KEY ("ProductId") REFERENCES products ("Id") ON DELETE RESTRICT
+);
+
+CREATE INDEX "IX_stock_movements_ProductId_CreatedAt" ON stock_movements ("ProductId", "CreatedAt");
+CREATE INDEX "IX_stock_movements_Reference" ON stock_movements ("Reference");
+CREATE INDEX "IX_stock_movements_Type" ON stock_movements ("Type");
+```
+
+### Endpoints implementados
+
+#### 1. POST /api/products/{id}/movements
+Registra movimiento y actualiza stock atómicamente.
+
+**Request:**
+```json
+{
+  "type": "Entrada",
+  "quantity": 10,
+  "reason": "Compra inicial",
+  "reference": "FC-001",
+  "unitCost": 900.00
+}
+```
+
+**Response 201:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 2, "productId": 1, "type": "Entrada", "quantity": 10,
+    "reason": "Compra inicial", "reference": "FC-001",
+    "createdAt": "2026-10-19T21:57:01.952Z",
+    "unitCost": 900.00, "previousStock": 25, "newStock": 35
+  },
+  "message": "Movimiento registrado",
+  "errors": []
+}
+```
+
+**Validaciones:**
+- 404 si producto no existe
+- 400 si stock insuficiente para Salida/Ajuste-
+- 400 si Entrada sin UnitCost
+- Transacción atómica (movimiento + stock update)
+
+#### 2. GET /api/products/{id}/kardex
+Historial paginado con filtros.
+
+**Query params:** `page=1&pageSize=50&type=Entrada&dateFrom=2026-01-01&dateTo=2026-12-31&reference=FC-001`
+
+**Response 200:**
+```json
+{
+  "success": true,
+  "data": {
+    "data": [...],
+    "totalCount": 5, "page": 1, "pageSize": 50,
+    "totalPages": 1, "hasPreviousPage": false, "hasNextPage": false
+  },
+  "meta": { "pagination": {...} }
+}
+```
+
+#### 3. GET /api/products/{id}/kardex/summary
+Resumen valorado para contador.
+
+**Response 200:**
+```json
+{
+  "success": true,
+  "data": {
+    "productId": 1, "productName": "Laptop Gaming", "productSKU": "LAP-GAM-001",
+    "currentStock": 31, "averageCost": 900.00, "stockValue": 27900.00,
+    "totalEntradas": 20, "totalSalidas": 5, "totalAjustes": 5,
+    "totalEntradasValue": 18000.00, "totalSalidasValue": 4750.00
+  }
+}
+```
+
+### JSON String Enum Converter (requerido para Minimal APIs)
+
+```csharp
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
+builder.Services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(options =>
+{
+    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
+```
+
+> Sin esto, `MovementType` se serializa como integer (1,2,3) en lugar de string ("Entrada","Salida","Ajuste").
+
+### Verificación funcional completa
+
+```bash
+# 1. Build y migración
+dotnet build
+dotnet ef migrations add AddStockMovements
+dotnet ef database update
+
+# 2. Ejecutar
+dotnet run --urls "http://localhost:5263"
+
+# 3. Probar flujo completo
+# 3.1 Entrada
+POST http://localhost:5263/api/products/1/movements
+{ "type": "Entrada", "quantity": 10, "reason": "Compra", "reference": "FC-001", "unitCost": 900 }
+
+# 3.2 Salida (usa costo promedio del producto si no se envía unitCost)
+POST http://localhost:5263/api/products/1/movements
+{ "type": "Salida", "quantity": 5, "reason": "Venta", "reference": "FV-001" }
+
+# 3.3 Ajuste positivo (con UnitCost = entrada)
+POST http://localhost:5263/api/products/1/movements
+{ "type": "Ajuste", "quantity": 3, "reason": "Inventario fisico", "reference": "INV-001", "unitCost": 950 }
+
+# 3.4 Ajuste negativo (sin UnitCost = salida)
+POST http://localhost:5263/api/products/1/movements
+{ "type": "Ajuste", "quantity": 2, "reason": "Merma", "reference": "MER-001" }
+
+# 3.5 Verificar stock actualizado
+GET http://localhost:5263/api/products/1
+
+# 3.6 Kardex paginado
+GET http://localhost:5263/api/products/1/kardex?page=1&pageSize=10&type=Salida
+
+# 3.7 Resumen valorado (para contador)
+GET http://localhost:5263/api/products/1/kardex/summary
+
+# 3.8 Validación stock insuficiente (debe fallar 400)
+POST http://localhost:5263/api/products/1/movements
+{ "type": "Salida", "quantity": 999, "reason": "Imposible" }
+```
+
+### Próximos pasos (Fase 4)
+
+* [ ] Identity + JWT + Roles (Admin, Manager, Viewer)
+* [ ] UserId en StockMovement (auditoría quién hizo el movimiento)
+* [ ] CreatedBy/ModifiedBy en todas las entidades
+* [ ] Políticas de autorización por endpoint
+* [ ] Refresh tokens + revocación

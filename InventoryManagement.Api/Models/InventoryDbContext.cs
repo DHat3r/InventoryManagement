@@ -11,6 +11,7 @@ public class InventoryDbContext : DbContext
 
     public DbSet<Product> Products => Set<Product>();
     public DbSet<Category> Categories => Set<Category>();
+    public DbSet<StockMovement> StockMovements => Set<StockMovement>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -52,6 +53,32 @@ public class InventoryDbContext : DbContext
             entity.HasOne(e => e.Category)
                   .WithMany(c => c.Products)
                   .HasForeignKey(e => e.CategoryId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // StockMovement configuration (Fase 3 - Kardex)
+        modelBuilder.Entity<StockMovement>(entity =>
+        {
+            entity.ToTable("stock_movements");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Type).HasConversion<byte>().IsRequired();
+            entity.Property(e => e.Quantity).IsRequired();
+            entity.Property(e => e.Reason).HasMaxLength(200);
+            entity.Property(e => e.Reference).HasMaxLength(100);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.UnitCost).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.PreviousStock).IsRequired();
+            entity.Property(e => e.NewStock).IsRequired();
+            
+            // Indexes for kardex queries
+            entity.HasIndex(e => new { e.ProductId, e.CreatedAt });
+            entity.HasIndex(e => e.Type);
+            entity.HasIndex(e => e.Reference);
+            
+            // Relationship
+            entity.HasOne(e => e.Product)
+                  .WithMany()
+                  .HasForeignKey(e => e.ProductId)
                   .OnDelete(DeleteBehavior.Restrict);
         });
 

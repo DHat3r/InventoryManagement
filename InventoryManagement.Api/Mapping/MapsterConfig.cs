@@ -100,6 +100,29 @@ public static class MapsterConfig
             .Ignore(dest => dest.CategoryId)
             .Ignore(dest => dest.CreatedAt)
             .Ignore(dest => dest.Category);
+
+        // ============================================================
+        // STOCK MOVEMENTS (Fase 3)
+        // ============================================================
+
+        // StockMovement -> StockMovementDto (completo)
+        TypeAdapterConfig<StockMovement, StockMovementDto>
+            .NewConfig()
+            .Map(dest => dest.ProductId, src => src.ProductId);
+
+        // StockMovement -> StockMovementListDto (ligero para listados)
+        TypeAdapterConfig<StockMovement, StockMovementListDto>
+            .NewConfig();
+
+        // CreateStockMovementDto -> StockMovement (crear entidad)
+        TypeAdapterConfig<CreateStockMovementDto, StockMovement>
+            .NewConfig()
+            .Map(dest => dest.CreatedAt, _ => DateTime.UtcNow)
+            .Ignore(dest => dest.Id)
+            .Ignore(dest => dest.ProductId)
+            .Ignore(dest => dest.Product)
+            .Ignore(dest => dest.PreviousStock)
+            .Ignore(dest => dest.NewStock);
     }
 
     private static CategoryRefDto MapCategoryRef(Category? category)
