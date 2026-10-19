@@ -1,0 +1,880 @@
+# Documentación: Implementación de Entity Framework Core
+
+> **Proyecto:** InventoryManagement.Api\
+> **Fecha:** 19/10/2026\
+> **Versión:** NET 8.0\
+> **Base de datos:** PostgreSQL 16 (Docker)
+
+***
+
+## 📋 Resumen de cambios
+
+Se implementó **Entity Framework Core 8.0** con proveedor **Npgsql** para PostgreSQL, incluyendo:
+
+* Entidades de dominio (`Category`, `Product`)
+
+* `DbContext` con configuración Fluent API
+
+* Migración inicial con datos semilla (seed data)
+
+* Endpoints CRUD completos usando Minimal APIs
+
+* Configuración de conexión y migración automática en desarrollo
+
+***
+
+## 📦 Paquetes NuGet instalados
+
+```xml
+<!-- InventoryManagement.Api.csproj -->
+<ItemGroup>
+  <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.21" />
+  <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+  <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
+  <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.10" />
+  <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.10" />
+</ItemGroup>
+```
+
+| Paquete                                 | Propósito                      |
+| --------------------------------------- | ------------------------------ |
+| `Microsoft.EntityFrameworkCore`         | Core de EF Core                |
+| `Npgsql.EntityFrameworkCore.PostgreSQL` | Proveedor PostgreSQL           |
+| `Microsoft.EntityFrameworkCore.Design`  | Herramientas CLI (`dotnet ef`) |
+
+***
+
+## 🗂️ Estructura de archivos creada
+
+```
+InventoryManagement.Api/
+├── Models/
+│   ├── Category.cs              # Entidad Categoría
+│   ├── Product.cs               # Entidad Producto
+│   └── InventoryDbContext.cs    # DbContext + configuración + seed
+├── Migrations/
+│   ├── 20261019145915_InitialCreate.cs
+│   ├── 20261019145915_InitialCreate.Designer.cs
+│   └── InventoryDbContextModelSnapshot.cs
+├── appsettings.json             # Connection string producción
+├── appsettings.Development.json # Connection string desarrollo
+└── Program.cs                   # Registro DI + endpoints + migración auto
+```
+
+***
+
+## 🏗️ Entidades de dominio
+
+### Category.cs
+
+```csharp
+namespace InventoryManagement.Api.Models;
+
+public class Category
+{
+    [Key]
+    public int Id { get; set; }
+
+    [Required]
+    [MaxLength(100)]
+    public string Name { get; set; } = string.Empty;
+
+    [MaxLength(500)]
+    public string? Description { get; set; }
+
+    public bool IsActive { get; set; } = true;
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+
+    // Navigation property
+    public virtual ICollection<Product> Products { get; set; } = new List<Product>();
+}
+```
+
+### Product.cs
+
+```csharp
+namespace InventoryManagement.Api.Models;
+
+public class Product
+{
+    [Key]
+    public int Id { get; set; }
+
+    [Required]
+    [MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+
+    [MaxLength(50)]
+    public string? SKU { get; set; }
+
+    [MaxLength(1000)]
+    public string? Description { get; set; }
+
+    [Required]
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal Price { get; set; }
+
+    [Required]
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal Cost { get; set; }
+
+    [Required]
+    public int StockQuantity { get; set; } = 0;
+
+    public int MinStockLevel { get; set; } = 10;
+
+    [MaxLength(50)]
+    public string? UnitOfMeasure { get; set; } = "UN";
+
+    public bool IsActive { get; set; } = true;
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+
+    // Foreign Key
+    public int CategoryId { get; set; }
+
+    // Navigation property
+    [ForeignKey(nameof(CategoryId))]
+    public virtual Category Category { get; set; } = null!;
+}
+```
+
+***
+
+## 🔧 DbContext y configuración Fluent API
+
+### InventoryDbContext.cs
+
+```csharp
+public class InventoryDbContext : DbContext
+{
+    public InventoryDbContext(DbContextOptions<InventoryDbContext> options) : base(options) { }
+
+    public DbSet<Product> Products => Set<Product>();
+    public DbSet<Category> Categories => Set<Category>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+
+        // ─── Category ───
+        modelBuilder.Entity<Category>(entity =>
+        {
+            entity.ToTable("categories");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasIndex(e => e.Name).IsUnique();
+        });
+
+        // ─── Product ───
+        modelBuilder.Entity<Product>(entity =>
+        {
+            entity.ToTable("products");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.SKU).HasMaxLength(50);
+            entity.Property(e => e.Description).HasMaxLength(1000);
+            entity.Property(e => e.Price).HasColumnType("decimal(18,2)").IsRequired();
+            entity.Property(e => e.Cost).HasColumnType("decimal(18,2)").IsRequired();
+            entity.Property(e => e.StockQuantity).HasDefaultValue(0);
+            entity.Property(e => e.MinStockLevel).HasDefaultValue(10);
+            entity.Property(e => e.UnitOfMeasure).HasMaxLength(50).HasDefaultValue("UN");
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            
+            entity.HasIndex(e => e.SKU).IsUnique();
+            entity.HasIndex(e => e.Name);
+            
+            // Relación: Product -> Category (muchos a uno)
+            entity.HasOne(e => e.Category)
+                  .WithMany(c => c.Products)
+                  .HasForeignKey(e => e.CategoryId)
+                  .OnDelete(DeleteBehavior.Restrict); // No borrar categoría si tiene productos
+        });
+
+        // Seed data
+        SeedData(modelBuilder);
+    }
+
+    private static void SeedData(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Category>().HasData(
+            new Category { Id = 1, Name = "Electrónica", Description = "...", IsActive = true, CreatedAt = DateTime.UtcNow },
+            new Category { Id = 2, Name = "Ropa", Description = "...", IsActive = true, CreatedAt = DateTime.UtcNow },
+            new Category { Id = 3, Name = "Hogar", Description = "...", IsActive = true, CreatedAt = DateTime.UtcNow },
+            new Category { Id = 4, Name = "Deportes", Description = "...", IsActive = true, CreatedAt = DateTime.UtcNow }
+        );
+
+        modelBuilder.Entity<Product>().HasData(
+            new Product { Id = 1, Name = "Laptop Gaming", SKU = "LAP-GAM-001", Price = 1299.99m, Cost = 950.00m, StockQuantity = 15, MinStockLevel = 5, CategoryId = 1, ... },
+            new Product { Id = 2, Name = "Mouse Inalámbrico", SKU = "MOU-WLS-001", Price = 49.99m, Cost = 25.00m, StockQuantity = 50, CategoryId = 1, ... },
+            // ... más productos
+        );
+    }
+}
+```
+
+**Puntos clave:**
+
+* `ToTable()`: nombres de tabla en minúscula (convención PostgreSQL)
+
+* `HasDefaultValueSql("CURRENT_TIMESTAMP")`: timestamps manejados por BD
+
+* `DeleteBehavior.Restrict`: evita borrado en cascada accidental
+
+* Índices únicos en `Category.Name` y `Product.SKU`
+
+* Seed data con IDs fijos para consistencia
+
+***
+
+## ⚙️ Configuración de conexión
+
+### appsettings.json / appsettings.Development.json
+
+```json
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning",
+      "Microsoft.EntityFrameworkCore.Database.Command": "Information"
+    }
+  },
+  "AllowedHosts": "*",
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Port=5432;Database=inventory_db;Username=postgres;Password=postgres"
+  }
+}
+```
+
+> **Nota:** En producción usar **User Secrets** o variables de entorno para la contraseña.
+
+***
+
+## 🚀 Program.cs - Registro y Endpoints
+
+### Registro de servicios
+
+```csharp
+builder.Services.AddDbContext<InventoryDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Migración automática en desarrollo
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
+    dbContext.Database.Migrate();
+}
+```
+
+### Endpoints - Categorías (`/api/categories`)
+
+```csharp
+var categoriesGroup = app.MapGroup("/api/categories").WithTags("Categories");
+
+// GET all
+categoriesGroup.MapGet("/", async (InventoryDbContext db) =>
+    await db.Categories.Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync());
+
+// GET by ID
+categoriesGroup.MapGet("/{id:int}", async (int id, InventoryDbContext db) =>
+    await db.Categories.FindAsync(id) is Category c ? Results.Ok(c) : Results.NotFound());
+
+// POST create
+categoriesGroup.MapPost("/", async (Category category, InventoryDbContext db) =>
+{
+    category.CreatedAt = DateTime.UtcNow;
+    db.Categories.Add(category);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/categories/{category.Id}", category);
+});
+
+// PUT update
+categoriesGroup.MapPut("/{id:int}", async (int id, Category updated, InventoryDbContext db) =>
+{
+    var category = await db.Categories.FindAsync(id);
+    if (category is null) return Results.NotFound();
+    
+    category.Name = updated.Name;
+    category.Description = updated.Description;
+    category.IsActive = updated.IsActive;
+    category.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync();
+    return Results.Ok(category);
+});
+
+// DELETE (soft delete)
+categoriesGroup.MapDelete("/{id:int}", async (int id, InventoryDbContext db) =>
+{
+    var category = await db.Categories.FindAsync(id);
+    if (category is null) return Results.NotFound();
+    category.IsActive = false;
+    category.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
+```
+
+### Endpoints - Productos (`/api/products`)
+
+```csharp
+var productsGroup = app.MapGroup("/api/products").WithTags("Products");
+
+// GET con filtros y paginación
+productsGroup.MapGet("/", async (
+    InventoryDbContext db,
+    int? categoryId,
+    bool? isActive,
+    string? search,
+    int page = 1,
+    int pageSize = 20) =>
+{
+    var query = db.Products.Include(p => p.Category).AsQueryable();
+
+    if (categoryId.HasValue) query = query.Where(p => p.CategoryId == categoryId.Value);
+    if (isActive.HasValue) query = query.Where(p => p.IsActive == isActive.Value);
+    if (!string.IsNullOrWhiteSpace(search))
+        query = query.Where(p => p.Name.Contains(search) || (p.SKU != null && p.SKU.Contains(search)));
+
+    var totalCount = await query.CountAsync();
+    var products = await query
+        .OrderBy(p => p.Name)
+        .Skip((page - 1) * pageSize)
+        .Take(pageSize)
+        .ToListAsync();
+
+    return Results.Ok(new
+    {
+        Data = products,
+        TotalCount = totalCount,
+        Page = page,
+        PageSize = pageSize,
+        TotalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
+    });
+});
+
+// GET low stock
+productsGroup.MapGet("/low-stock", async (InventoryDbContext db) =>
+    await db.Products
+        .Include(p => p.Category)
+        .Where(p => p.IsActive && p.StockQuantity <= p.MinStockLevel)
+        .OrderBy(p => p.StockQuantity)
+        .ToListAsync());
+
+// POST create (con validación de categoría)
+productsGroup.MapPost("/", async (Product product, InventoryDbContext db) =>
+{
+    var category = await db.Categories.FindAsync(product.CategoryId);
+    if (category is null) return Results.BadRequest("Category not found");
+
+    product.CreatedAt = DateTime.UtcNow;
+    db.Products.Add(product);
+    await db.SaveChangesAsync();
+    await db.Entry(product).Reference(p => p.Category).LoadAsync();a
+    return Results.Created($"/api/products/{product.Id}", product);
+});
+
+// PATCH stock (actualización parcial)
+productsGroup.MapPatch("/{id:int}/stock", async (int id, int quantity, InventoryDbContext db) =>
+{
+    var product = await db.Products.FindAsync(id);
+    if (product is null) return Results.NotFound();
+    product.StockQuantity = quantity;
+    product.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync();
+    return Results.Ok(product);
+});
+```
+
+***
+
+## 🗃️ Migración generada
+
+### 20261019145915\_InitialCreate.cs (fragmento)
+
+```csharp
+protected override void Up(MigrationBuilder migrationBuilder)
+{
+    migrationBuilder.CreateTable(
+        name: "categories",
+        columns: table => new
+        {
+            Id = table.Column<int>(type: "integer", nullable: false)
+                .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+            Name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+            Description = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
+            IsActive = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
+            CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP"),
+            UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
+        },
+        constraints: table => { table.PrimaryKey("PK_categories", x => x.Id); });
+
+    migrationBuilder.CreateTable(
+        name: "products",
+        columns: table => new
+        {
+            Id = table.Column<int>(type: "integer", nullable: false)
+                .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+            Name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+            SKU = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+            // ... más columnas
+            CategoryId = table.Column<int>(type: "integer", nullable: false)
+        },
+        constraints: table =>
+        {
+            table.PrimaryKey("PK_products", x => x.Id);
+            table.ForeignKey(
+                name: "FK_products_categories_CategoryId",
+                column: x => x.CategoryId,
+                principalTable: "categories",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Restrict);
+        });
+
+    // Índices
+    migrationBuilder.CreateIndex(name: "IX_categories_Name", table: "categories", column: "Name", unique: true);
+    migrationBuilder.CreateIndex(name: "IX_products_SKU", table: "products", column: "SKU", unique: true);
+    migrationBuilder.CreateIndex(name: "IX_products_CategoryId", table: "products", column: "CategoryId");
+    migrationBuilder.CreateIndex(name: "IX_products_Name", table: "products", column: "Name");
+
+    // Seed data (4 categorías, 6 productos)
+    migrationBuilder.InsertData(...);
+}
+```
+
+***
+
+## 🐳 Docker Compose (PostgreSQL)
+
+```yaml
+# docker-compose.yml (raíz del proyecto)
+services:
+  postgres:
+    image: postgres:16
+    container_name: inventory-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+```
+
+Variables de entorno requeridas (`.env` o exportadas):
+
+```bash
+POSTGRES_DB=inventory_db
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+```
+
+***
+
+## 🛠️ Comandos útiles
+
+```bash
+# 1. Iniciar PostgreSQL
+docker-compose up -d
+
+# 2. Crear migración (desde carpeta InventoryManagement.Api)
+dotnet ef migrations add NombreMigracion
+
+# 3. Aplicar migración a BD
+dotnet ef database update
+
+# 4. Revertir última migración
+dotnet ef migrations remove
+
+# 5. Ver migraciones aplicadas
+dotnet ef migrations list
+
+# 6. Generar script SQL
+dotnet ef migrations script
+
+# 7. Ejecutar API
+dotnet run
+# Swagger: https://localhost:7279/swagger
+```
+
+***
+
+## 📚 Próximos pasos sugeridos
+
+| Área                   | Pendiente                                         |
+| ---------------------- | ------------------------------------------------- |
+| **Validación**         | FluentValidation o DataAnnotations completos      |
+| **DTOs**               | Separar entidades de modelos de entrada/salida    |
+| **Autenticación**      | JWT Bearer + roles (Admin, User)                  |
+| **Tests**              | xUnit + TestContainers para integration tests     |
+| **Logging**            | Serilog + Seq / Elasticsearch                     |
+| **Caché**              | Redis para consultas frecuentes                   |
+| **Auditoría**          | Interceptors para CreatedAt/UpdatedAt automáticos |
+| **Soft delete global** | Query filters en `OnModelCreating`                |
+| **Health checks**      | `/health` endpoint con DB check                   |
+
+***
+
+## 🔗 Referencias útiles
+
+* [EF Core Docs](https://learn.microsoft.com/ef/core/)
+
+* [Npgsql EF Core Provider](https://www.npgsql.org/efcore/)
+
+* [Minimal APIs](https://learn.microsoft.com/aspnet/core/fundamentals/minimal-apis)
+
+* [PostgreSQL Data Types](https://www.postgresql.org/docs/current/datatype.html)
+
+***
+
+## 📦 FASE 1 - DTOs, Validación y Mapeo (Agregado 19/10/2026)
+
+### Paquetes adicionales instalados
+
+```xml
+<ItemGroup>
+  <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.0" />
+  <PackageReference Include="Mapster" Version="7.4.0" />
+  <PackageReference Include="Mapster.DependencyInjection" Version="1.0.1" />
+</ItemGroup>
+```
+
+| Paquete                       | Propósito                                         |
+| ----------------------------- | ------------------------------------------------- |
+| `FluentValidation.AspNetCore` | Validación declarativa + integración ASP.NET Core |
+| `Mapster`                     | Mapeo objeto-objeto de alto rendimiento           |
+| `Mapster.DependencyInjection` | Registro DI automático de Mapster                 |
+
+### Nueva estructura de carpetas
+
+```
+InventoryManagement.Api/
+├── Common/
+│   └── ApiResponse.cs           # ApiResponse<T>, PagedResult<T>, PaginationMeta
+├── DTOs/
+│   ├── CategoryDtos.cs          # CategoryDto, CreateCategoryDto, UpdateCategoryDto, CategoryRefDto
+│   └── ProductDtos.cs           # ProductDto, ProductListDto, CreateProductDto, UpdateProductDto, UpdateStockDto, ProductFilterDto
+├── Validators/
+│   ├── CategoryValidators.cs    # CreateCategoryValidator, UpdateCategoryValidator
+│   └── ProductValidators.cs     # CreateProductValidator, UpdateProductValidator, UpdateStockValidator, ProductFilterValidator
+├── Mapping/
+│   └── MapsterConfig.cs         # Configuración completa Mapster (Entity ↔ DTO)
+└── Models/ (existente)
+```
+
+### DTOs - Principales
+
+#### CategoryDtos.cs
+
+```csharp
+public record CategoryDto(int Id, string Name, string? Description, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt, int ProductsCount);
+public record CreateCategoryDto([Required, MaxLength(100)] string Name, [MaxLength(500)] string? Description);
+public record UpdateCategoryDto([Required, MaxLength(100)] string Name, [MaxLength(500)] string? Description, bool IsActive);
+public record CategoryRefDto(int Id, string Name); // Ligero para referencias
+```
+
+#### ProductDtos.cs
+
+```csharp
+// Salida completa
+public record ProductDto(int Id, string Name, string? SKU, string? Description, decimal Price, decimal Cost, int StockQuantity, int MinStockLevel, string? UnitOfMeasure, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt, CategoryRefDto Category, bool IsLowStock, decimal MarginPercentage);
+
+// Salida ligera (listados)
+public record ProductListDto(int Id, string Name, string? SKU, decimal Price, int StockQuantity, bool IsActive, bool IsLowStock, CategoryRefDto Category);
+
+// Entrada
+public record CreateProductDto([Required, MaxLength(200)] string Name, [Required, Range(0.01, double.MaxValue)] decimal Price, [Required, Range(0, double.MaxValue)] decimal Cost, [Required] int CategoryId, [MaxLength(50)] string? SKU, [MaxLength(1000)] string? Description, [Range(0, int.MaxValue)] int StockQuantity, [Range(0, int.MaxValue)] int MinStockLevel, [MaxLength(50)] string? UnitOfMeasure);
+
+public record UpdateProductDto(/* mismos campos + IsActive */);
+public record UpdateStockDto([Required, Range(0, int.MaxValue)] int Quantity);
+
+// Filtros avanzados
+public record ProductFilterDto(int Page = 1, [Range(1, 100)] int PageSize = 20, int? CategoryId, bool? IsActive, string? Search, decimal? MinPrice, decimal? MaxPrice, bool? LowStockOnly, string? SortBy, bool SortDesc);
+```
+
+#### Common/ApiResponse.cs
+
+```csharp
+public class ApiResponse<T>
+{
+    public bool Success { get; set; }
+    public T? Data { get; set; }
+    public string? Message { get; set; }
+    public List<string> Errors { get; set; } = new();
+    public object? Meta { get; set; }
+    // Factory methods: Ok(), Fail()
+}
+
+public class PagedResult<T>
+{
+    public List<T> Data { get; set; }
+    public int TotalCount { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int TotalPages => PageSize > 0 ? (int)Math.Ceiling((double)TotalCount / PageSize) : 0;
+    public bool HasPreviousPage => Page > 1;
+    public bool HasNextPage => Page < TotalPages;
+    // Factory: Create()
+}
+```
+
+### Validación (FluentValidation)
+
+#### Validators/CategoryValidators.cs
+
+```csharp
+public class CreateCategoryValidator : AbstractValidator<CreateCategoryDto>
+{
+    public CreateCategoryValidator()
+    {
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(100).Matches(@"^[\p{L}\p{N}\s\-']+$");
+        RuleFor(x => x.Description).MaximumLength(500).When(x => !string.IsNullOrEmpty(x.Description));
+    }
+}
+```
+
+#### Validators/ProductValidators.cs
+
+```csharp
+public class CreateProductValidator : AbstractValidator<CreateProductDto>
+{
+    private readonly InventoryDbContext _db;
+    public CreateProductValidator(InventoryDbContext db) { _db = db; ... }
+    
+    // Valida: Name, SKU (formato + unicidad en BD), Description, Price > 0, Cost >= 0, Stock >= 0, MinStockLevel >= 0, UnitOfMeasure, CategoryId (existe en BD)
+}
+
+public class UpdateProductValidator : AbstractValidator<UpdateProductDto>
+{
+    private int? _productId;
+    public UpdateProductValidator(InventoryDbContext db) { _db = db; ... }
+    public UpdateProductValidator SetProductId(int id) { _productId = id; return this; }
+    // Valida SKU único excluyendo el producto actual
+}
+```
+
+**Validaciones de BD integradas:**
+
+* `CategoryId` → `MustAsync(CategoryExists)` verifica FK en base de datos
+
+* `SKU` → `MustAsync(SkuUnique)` verifica unicidad en tabla products
+
+#### Helpers en Program.cs
+
+```csharp
+static IResult ValidationProblem(ValidationResult result)
+    => Results.ValidationProblem(result.ToDictionary());
+
+static ApiResponse<T> OkResponse<T>(T data, string? message = null, object? meta = null)
+    => ApiResponse<T>.Ok(data, message, meta);
+
+static ApiResponse<T> FailResponse<T>(string error, string? message = null)
+    => ApiResponse<T>.Fail(error, message);
+```
+
+### Mapeo (Mapster) - Mapping/MapsterConfig.cs
+
+```csharp
+public static class MapsterConfig
+{
+    public static void RegisterMappings()
+    {
+        // Category -> CategoryDto (incluye ProductsCount)
+        TypeAdapterConfig<Category, CategoryDto>.NewConfig()
+            .Map(dest => dest.ProductsCount, src => src.Products?.Count ?? 0);
+
+        // Category -> CategoryRefDto
+        TypeAdapterConfig<Category, CategoryRefDto>.NewConfig()
+            .Map(dest => dest.Id, src => src.Id)
+            .Map(dest => dest.Name, src => src.Name);
+
+        // Create/Update DTOs -> Entity (ignora Id, timestamps, nav props)
+        TypeAdapterConfig<CreateCategoryDto, Category>.NewConfig()
+            .Map(dest => dest.CreatedAt, _ => DateTime.UtcNow)
+            .Map(dest => dest.IsActive, _ => true)
+            .Ignore(dest => dest.Id).Ignore(dest => dest.UpdatedAt).Ignore(dest => dest.Products);
+
+        // Product -> ProductDto (completo: Category, IsLowStock, MarginPercentage)
+        TypeAdapterConfig<Product, ProductDto>.NewConfig()
+            .Map(dest => dest.Category, src => MapCategoryRef(src.Category))
+            .Map(dest => dest.IsLowStock, src => src.StockQuantity <= src.MinStockLevel)
+            .Map(dest => dest.MarginPercentage, src => src.Cost > 0 ? Math.Round(((src.Price - src.Cost) / src.Cost) * 100, 2) : 0);
+
+        // Product -> ProductListDto (ligero)
+        TypeAdapterConfig<Product, ProductListDto>.NewConfig()
+            .Map(dest => dest.Category, src => MapCategoryRef(src.Category))
+            .Map(dest => dest.IsLowStock, src => src.StockQuantity <= src.MinStockLevel);
+
+        // Create/Update ProductDto -> Entity
+        TypeAdapterConfig<CreateProductDto, Product>.NewConfig()
+            .Map(dest => dest.CreatedAt, _ => DateTime.UtcNow)
+            .Map(dest => dest.IsActive, _ => true)
+            .Ignore(dest => dest.Id, dest.UpdatedAt, dest.Category);
+        
+        TypeAdapterConfig<UpdateProductDto, Product>.NewConfig()
+            .Map(dest => dest.UpdatedAt, _ => DateTime.UtcNow)
+            .Ignore(dest => dest.Id, dest.CreatedAt, dest.Category);
+    }
+
+    private static CategoryRefDto MapCategoryRef(Category? category)
+        => category != null ? new CategoryRefDto(category.Id, category.Name) : new CategoryRefDto(0, string.Empty);
+}
+```
+
+### Program.cs actualizado - Endpoints refactorizados
+
+#### Servicios registrados
+
+```csharp
+builder.Services.AddValidatorsFromAssemblyContaining<Program>();
+builder.Services.AddMapster();
+MapsterConfig.RegisterMappings();
+```
+
+#### Ejemplo: POST /api/categories
+
+```csharp
+categories.MapPost("/", async (CreateCategoryDto dto, IValidator<CreateCategoryDto> validator, InventoryDbContext db) =>
+{
+    var validation = await validator.ValidateAsync(dto);
+    if (!validation.IsValid) return ValidationProblem(validation);
+
+    var entity = dto.Adapt<Category>();
+    db.Categories.Add(entity);
+    await db.SaveChangesAsync();
+
+    var result = entity.Adapt<CategoryDto>();
+    return Results.Created($"/api/categories/{entity.Id}", OkResponse(result, "Categoría creada"));
+});
+```
+
+#### Ejemplo: GET /api/products (paginado + filtros + orden)
+
+```csharp
+products.MapGet("/", async (InventoryDbContext db, IValidator<ProductFilterDto> filterValidator, ProductFilterDto filter) =>
+{
+    var validation = await filterValidator.ValidateAsync(filter);
+    if (!validation.IsValid) return ValidationProblem(validation);
+
+    var query = db.Products.Include(p => p.Category).AsQueryable();
+    // ... filtros: CategoryId, IsActive, Search, MinPrice, MaxPrice, LowStockOnly
+    // ... orden dinámico: SortBy (name/price/stock/createdat) + SortDesc
+
+    var total = await query.CountAsync();
+    var items = await query
+        .Skip((filter.Page - 1) * filter.PageSize)
+        .Take(filter.PageSize)
+        .ProjectToType<ProductListDto>() // Mapster projection a DB
+        .ToListAsync();
+
+    var paged = PagedResult<ProductListDto>.Create(items, total, filter.Page, filter.PageSize);
+    return Results.Ok(OkResponse(paged, meta: new { pagination = new { paged.TotalCount, paged.Page, paged.PageSize, paged.TotalPages, paged.HasPreviousPage, paged.HasNextPage } }));
+});
+```
+
+### Respuestas de ejemplo
+
+#### Éxito (200/201)
+
+```json
+{
+  "success": true,
+  "data": { "id": 1, "name": "Laptop Gaming", "price": 1299.99, ... },
+  "message": "Producto creado",
+  "errors": [],
+  "meta": null
+}
+```
+
+#### Lista paginada
+
+```json
+{
+  "success": true,
+  "data": {
+    "data": [...],
+    "totalCount": 25,
+    "page": 1,
+    "pageSize": 20,
+    "totalPages": 2,
+    "hasPreviousPage": false,
+    "hasNextPage": true
+  },
+  "message": null,
+  "errors": [],
+  "meta": {
+    "pagination": { "totalCount": 25, "page": 1, "pageSize": 20, "totalPages": 2, "hasPreviousPage": false, "hasNextPage": true }
+  }
+}
+```
+
+#### Error de validación (400)
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc7807",
+  "title": "One or more validation errors occurred.",
+  "status": 400,
+  "errors": {
+    "Name": ["El nombre es obligatorio"],
+    "Price": ["El precio debe ser mayor a 0"],
+    "CategoryId": ["La categoría seleccionada no existe"]
+  }
+}
+```
+
+#### No encontrado (404)
+
+```json
+{
+  "success": false,
+  "data": null,
+  "message": "Producto no encontrado",
+  "errors": ["Producto no encontrado"],
+  "meta": null
+}
+```
+
+### Migración de base de datos
+
+> **Sin cambios** - La Fase 1 solo afecta capa de aplicación (DTOs, validación, mapeo, endpoints). La BD y entidades siguen igual.
+
+### Para probar
+
+```bash
+# 1. Iniciar PostgreSQL
+docker-compose up -d
+
+# 2. Aplicar migración
+cd InventoryManagement.Api
+dotnet ef database update
+
+# 3. Ejecutar
+dotnet run
+# Swagger: http://localhost:5263/swagger
+```
+
+### Próximos pasos (Fase 2)
+
+* [ ] Middleware global `ExceptionHandlingMiddleware`
+
+* [ ] Excepciones de dominio (`NotFoundException`, `BusinessRuleException`)
+
+* [ ] ProblemDetails RFC 7807 unificado para todos los errores
+
+* [ ] Serilog (Console + File) + Correlation ID
+
+* [ ] Log de queries EF Core lentas

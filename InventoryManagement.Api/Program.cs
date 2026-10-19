@@ -1,19 +1,36 @@
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using FluentValidation;
+using Mapster;
 using InventoryManagement.Api.Models;
+using InventoryManagement.Api.DTOs;
+using InventoryManagement.Api.Validators;
+using InventoryManagement.Api.Mapping;
+using InventoryManagement.Api.Common;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// ─── Services ───
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SupportNonNullableReferenceTypes();
+});
 
-// Add DbContext
+// DbContext
 builder.Services.AddDbContext<InventoryDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// FluentValidation
+builder.Services.AddValidatorsFromAssemblyContaining<Program>();
+
+// Mapster
+builder.Services.AddMapster();
+MapsterConfig.RegisterMappings();
+
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// ─── Pipeline ───
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -22,74 +39,96 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// Apply migrations automatically on startup (development only)
+// Auto-migrate on startup (dev)
 if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();
-    var dbContext = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
-    dbContext.Database.Migrate();
+    var db = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
+    db.Database.Migrate();
 }
 
-// === CATEGORIES ENDPOINTS ===
-var categoriesGroup = app.MapGroup("/api/categories").WithTags("Categories");
+// ─── Helpers ───
+static IResult ValidationProblem(FluentValidation.Results.ValidationResult result)
+    => Results.ValidationProblem(result.ToDictionary());
 
-// GET all categories
-categoriesGroup.MapGet("/", async (InventoryDbContext db) =>
+static ApiResponse<T> OkResponse<T>(T data, string? message = null, object? meta = null)
+    => ApiResponse<T>.Ok(data, message, meta);
+
+static ApiResponse<T> FailResponse<T>(string error, string? message = null)
+    => ApiResponse<T>.Fail(error, message);
+
+// ============================================================
+// CATEGORIES
+// ============================================================
+var categories = app.MapGroup("/api/categories").WithTags("Categories");
+
+// GET all
+categories.MapGet("/", async (InventoryDbContext db) =>
 {
-    var categories = await db.Categories
+    var list = await db.Categories
         .Where(c => c.IsActive)
         .OrderBy(c => c.Name)
+        .ProjectToType<CategoryDto>()
         .ToListAsync();
-    return Results.Ok(categories);
+    return Results.Ok(OkResponse(list));
 })
 .WithName("GetCategories")
 .WithOpenApi();
 
-// GET category by ID
-categoriesGroup.MapGet("/{id:int}", async (int id, InventoryDbContext db) =>
+// GET by ID
+categories.MapGet("/{id:int}", async (int id, InventoryDbContext db) =>
 {
-    var category = await db.Categories.FindAsync(id);
-    return category is not null ? Results.Ok(category) : Results.NotFound();
+    var entity = await db.Categories
+        .Where(c => c.Id == id)
+        .ProjectToType<CategoryDto>()
+        .FirstOrDefaultAsync();
+    return entity is not null ? Results.Ok(OkResponse(entity)) : Results.NotFound(FailResponse<CategoryDto>("Categoría no encontrada"));
 })
 .WithName("GetCategoryById")
 .WithOpenApi();
 
-// POST create category
-categoriesGroup.MapPost("/", async (Category category, InventoryDbContext db) =>
+// POST create
+categories.MapPost("/", async (CreateCategoryDto dto, IValidator<CreateCategoryDto> validator, InventoryDbContext db) =>
 {
-    category.CreatedAt = DateTime.UtcNow;
-    db.Categories.Add(category);
+    var validation = await validator.ValidateAsync(dto);
+    if (!validation.IsValid) return ValidationProblem(validation);
+
+    var entity = dto.Adapt<Category>();
+    db.Categories.Add(entity);
     await db.SaveChangesAsync();
-    return Results.Created($"/api/categories/{category.Id}", category);
+
+    var result = entity.Adapt<CategoryDto>();
+    return Results.Created($"/api/categories/{entity.Id}", OkResponse(result, "Categoría creada"));
 })
 .WithName("CreateCategory")
 .WithOpenApi();
 
-// PUT update category
-categoriesGroup.MapPut("/{id:int}", async (int id, Category updatedCategory, InventoryDbContext db) =>
+// PUT update
+categories.MapPut("/{id:int}", async (int id, UpdateCategoryDto dto, IValidator<UpdateCategoryDto> validator, InventoryDbContext db) =>
 {
-    var category = await db.Categories.FindAsync(id);
-    if (category is null) return Results.NotFound();
+    var validation = await validator.ValidateAsync(dto);
+    if (!validation.IsValid) return ValidationProblem(validation);
 
-    category.Name = updatedCategory.Name;
-    category.Description = updatedCategory.Description;
-    category.IsActive = updatedCategory.IsActive;
-    category.UpdatedAt = DateTime.UtcNow;
+    var entity = await db.Categories.FindAsync(id);
+    if (entity is null) return Results.NotFound(FailResponse<CategoryDto>("Categoría no encontrada"));
 
+    dto.Adapt(entity);
     await db.SaveChangesAsync();
-    return Results.Ok(category);
+
+    var result = entity.Adapt<CategoryDto>();
+    return Results.Ok(OkResponse(result, "Categoría actualizada"));
 })
 .WithName("UpdateCategory")
 .WithOpenApi();
 
-// DELETE category (soft delete)
-categoriesGroup.MapDelete("/{id:int}", async (int id, InventoryDbContext db) =>
+// DELETE (soft)
+categories.MapDelete("/{id:int}", async (int id, InventoryDbContext db) =>
 {
-    var category = await db.Categories.FindAsync(id);
-    if (category is null) return Results.NotFound();
+    var entity = await db.Categories.FindAsync(id);
+    if (entity is null) return Results.NotFound(FailResponse<CategoryDto>("Categoría no encontrada"));
 
-    category.IsActive = false;
-    category.UpdatedAt = DateTime.UtcNow;
+    entity.IsActive = false;
+    entity.UpdatedAt = DateTime.UtcNow;
     await db.SaveChangesAsync();
     return Results.NoContent();
 })
@@ -97,139 +136,171 @@ categoriesGroup.MapDelete("/{id:int}", async (int id, InventoryDbContext db) =>
 .WithOpenApi();
 
 
-// === PRODUCTS ENDPOINTS ===
-var productsGroup = app.MapGroup("/api/products").WithTags("Products");
+// ============================================================
+// PRODUCTS
+// ============================================================
+var products = app.MapGroup("/api/products").WithTags("Products");
 
-// GET all products (with optional filtering)
-productsGroup.MapGet("/", async (
+// GET all (paginado, filtros, orden)
+products.MapGet("/", async (
     InventoryDbContext db,
-    int? categoryId,
-    bool? isActive,
-    string? search,
-    int page = 1,
-    int pageSize = 20) =>
+    IValidator<ProductFilterDto> filterValidator,
+    [AsParameters] ProductFilterDto filter) =>
 {
+    var validation = await filterValidator.ValidateAsync(filter);
+    if (!validation.IsValid) return ValidationProblem(validation);
+
     var query = db.Products.Include(p => p.Category).AsQueryable();
 
-    if (categoryId.HasValue)
-        query = query.Where(p => p.CategoryId == categoryId.Value);
+    if (filter.CategoryId.HasValue)
+        query = query.Where(p => p.CategoryId == filter.CategoryId.Value);
 
-    if (isActive.HasValue)
-        query = query.Where(p => p.IsActive == isActive.Value);
+    if (filter.IsActive.HasValue)
+        query = query.Where(p => p.IsActive == filter.IsActive.Value);
 
-    if (!string.IsNullOrWhiteSpace(search))
-        query = query.Where(p => p.Name.Contains(search) || (p.SKU != null && p.SKU.Contains(search)));
+    if (!string.IsNullOrWhiteSpace(filter.Search))
+        query = query.Where(p => p.Name.Contains(filter.Search!) || (p.SKU != null && p.SKU.Contains(filter.Search!)));
 
-    var totalCount = await query.CountAsync();
-    var products = await query
-        .OrderBy(p => p.Name)
-        .Skip((page - 1) * pageSize)
-        .Take(pageSize)
+    if (filter.MinPrice.HasValue)
+        query = query.Where(p => p.Price >= filter.MinPrice.Value);
+
+    if (filter.MaxPrice.HasValue)
+        query = query.Where(p => p.Price <= filter.MaxPrice.Value);
+
+    if (filter.LowStockOnly == true)
+        query = query.Where(p => p.IsActive && p.StockQuantity <= p.MinStockLevel);
+
+    // Ordenamiento dinámico
+    query = (filter.SortBy?.ToLower(), filter.SortDesc) switch
+    {
+        ("price", false) => query.OrderBy(p => p.Price),
+        ("price", true) => query.OrderByDescending(p => p.Price),
+        ("stock", false) => query.OrderBy(p => p.StockQuantity),
+        ("stock", true) => query.OrderByDescending(p => p.StockQuantity),
+        ("createdat", false) => query.OrderBy(p => p.CreatedAt),
+        ("createdat", true) => query.OrderByDescending(p => p.CreatedAt),
+        _ => query.OrderBy(p => p.Name)
+    };
+
+    var total = await query.CountAsync();
+    var items = await query
+        .Skip((filter.Page - 1) * filter.PageSize)
+        .Take(filter.PageSize)
+        .ProjectToType<ProductListDto>()
         .ToListAsync();
 
-    return Results.Ok(new
+    var paged = PagedResult<ProductListDto>.Create(items, total, filter.Page, filter.PageSize);
+    return Results.Ok(OkResponse(paged, meta: new
     {
-        Data = products,
-        TotalCount = totalCount,
-        Page = page,
-        PageSize = pageSize,
-        TotalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
-    });
+        pagination = new
+        {
+            paged.TotalCount,
+            paged.Page,
+            paged.PageSize,
+            paged.TotalPages,
+            paged.HasPreviousPage,
+            paged.HasNextPage
+        }
+    }));
 })
 .WithName("GetProducts")
 .WithOpenApi();
 
-// GET product by ID
-productsGroup.MapGet("/{id:int}", async (int id, InventoryDbContext db) =>
+// GET by ID (completo)
+products.MapGet("/{id:int}", async (int id, InventoryDbContext db) =>
 {
-    var product = await db.Products.Include(p => p.Category).FirstOrDefaultAsync(p => p.Id == id);
-    return product is not null ? Results.Ok(product) : Results.NotFound();
+    var entity = await db.Products
+        .Include(p => p.Category)
+        .Where(p => p.Id == id)
+        .ProjectToType<ProductDto>()
+        .FirstOrDefaultAsync();
+    return entity is not null ? Results.Ok(OkResponse(entity)) : Results.NotFound(FailResponse<ProductDto>("Producto no encontrado"));
 })
 .WithName("GetProductById")
 .WithOpenApi();
 
-// GET low stock products
-productsGroup.MapGet("/low-stock", async (InventoryDbContext db) =>
+// GET low stock
+products.MapGet("/low-stock", async (InventoryDbContext db) =>
 {
-    var products = await db.Products
+    var list = await db.Products
         .Include(p => p.Category)
         .Where(p => p.IsActive && p.StockQuantity <= p.MinStockLevel)
         .OrderBy(p => p.StockQuantity)
+        .ProjectToType<ProductListDto>()
         .ToListAsync();
-    return Results.Ok(products);
+    return Results.Ok(OkResponse(list));
 })
 .WithName("GetLowStockProducts")
 .WithOpenApi();
 
-// POST create product
-productsGroup.MapPost("/", async (Product product, InventoryDbContext db) =>
+// POST create
+products.MapPost("/", async (CreateProductDto dto, IValidator<CreateProductDto> validator, InventoryDbContext db) =>
 {
-    // Validate category exists
-    var category = await db.Categories.FindAsync(product.CategoryId);
-    if (category is null) return Results.BadRequest("Category not found");
+    var validation = await validator.ValidateAsync(dto);
+    if (!validation.IsValid) return ValidationProblem(validation);
 
-    product.CreatedAt = DateTime.UtcNow;
-    db.Products.Add(product);
+    var entity = dto.Adapt<Product>();
+    db.Products.Add(entity);
     await db.SaveChangesAsync();
 
-    // Reload with category
-    await db.Entry(product).Reference(p => p.Category).LoadAsync();
-    return Results.Created($"/api/products/{product.Id}", product);
+    // Recargar con Category para el DTO de salida
+    await db.Entry(entity).Reference(p => p.Category).LoadAsync();
+    var result = entity.Adapt<ProductDto>();
+
+    return Results.Created($"/api/products/{entity.Id}", OkResponse(result, "Producto creado"));
 })
 .WithName("CreateProduct")
 .WithOpenApi();
 
-// PUT update product
-productsGroup.MapPut("/{id:int}", async (int id, Product updatedProduct, InventoryDbContext db) =>
+// PUT update
+products.MapPut("/{id:int}", async (int id, UpdateProductDto dto, IValidator<UpdateProductDto> validator, InventoryDbContext db) =>
 {
-    var product = await db.Products.FindAsync(id);
-    if (product is null) return Results.NotFound();
+    var validation = await validator.ValidateAsync(dto);
+    if (!validation.IsValid) return ValidationProblem(validation);
 
-    // Validate category exists
-    var category = await db.Categories.FindAsync(updatedProduct.CategoryId);
-    if (category is null) return Results.BadRequest("Category not found");
+    var entity = await db.Products.FindAsync(id);
+    if (entity is null) return Results.NotFound(FailResponse<ProductDto>("Producto no encontrado"));
 
-    product.Name = updatedProduct.Name;
-    product.SKU = updatedProduct.SKU;
-    product.Description = updatedProduct.Description;
-    product.Price = updatedProduct.Price;
-    product.Cost = updatedProduct.Cost;
-    product.StockQuantity = updatedProduct.StockQuantity;
-    product.MinStockLevel = updatedProduct.MinStockLevel;
-    product.UnitOfMeasure = updatedProduct.UnitOfMeasure;
-    product.IsActive = updatedProduct.IsActive;
-    product.CategoryId = updatedProduct.CategoryId;
-    product.UpdatedAt = DateTime.UtcNow;
+    // Pasar ID al validador para unicidad de SKU
+    if (validator is UpdateProductValidator upv) upv.SetProductId(id);
 
+    dto.Adapt(entity);
     await db.SaveChangesAsync();
-    await db.Entry(product).Reference(p => p.Category).LoadAsync();
-    return Results.Ok(product);
+
+    await db.Entry(entity).Reference(p => p.Category).LoadAsync();
+    var result = entity.Adapt<ProductDto>();
+
+    return Results.Ok(OkResponse(result, "Producto actualizado"));
 })
 .WithName("UpdateProduct")
 .WithOpenApi();
 
-// PATCH update stock
-productsGroup.MapPatch("/{id:int}/stock", async (int id, int quantity, InventoryDbContext db) =>
+// PATCH stock
+products.MapPatch("/{id:int}/stock", async (int id, UpdateStockDto dto, IValidator<UpdateStockDto> validator, InventoryDbContext db) =>
 {
-    var product = await db.Products.FindAsync(id);
-    if (product is null) return Results.NotFound();
+    var validation = await validator.ValidateAsync(dto);
+    if (!validation.IsValid) return ValidationProblem(validation);
 
-    product.StockQuantity = quantity;
-    product.UpdatedAt = DateTime.UtcNow;
+    var entity = await db.Products.FindAsync(id);
+    if (entity is null) return Results.NotFound(FailResponse<ProductDto>("Producto no encontrado"));
+
+    dto.Adapt(entity);
     await db.SaveChangesAsync();
-    return Results.Ok(product);
+
+    var result = entity.Adapt<ProductDto>();
+    return Results.Ok(OkResponse(result, "Stock actualizado"));
 })
 .WithName("UpdateProductStock")
 .WithOpenApi();
 
-// DELETE product (soft delete)
-productsGroup.MapDelete("/{id:int}", async (int id, InventoryDbContext db) =>
+// DELETE (soft)
+products.MapDelete("/{id:int}", async (int id, InventoryDbContext db) =>
 {
-    var product = await db.Products.FindAsync(id);
-    if (product is null) return Results.NotFound();
+    var entity = await db.Products.FindAsync(id);
+    if (entity is null) return Results.NotFound(FailResponse<ProductDto>("Producto no encontrado"));
 
-    product.IsActive = false;
-    product.UpdatedAt = DateTime.UtcNow;
+    entity.IsActive = false;
+    entity.UpdatedAt = DateTime.UtcNow;
     await db.SaveChangesAsync();
     return Results.NoContent();
 })
