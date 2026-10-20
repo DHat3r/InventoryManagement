@@ -1,19 +1,66 @@
+# Docker Compose for Inventory Management
+# Usage:
+#   docker-compose up -d                          # Solo PostgreSQL (dev)
+#   docker-compose --profile api up -d            # PostgreSQL + API
+#   docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d  # Dev con override local
+#
+# Variables en .env (ver .env.example)
+
 services:
   postgres:
     image: postgres:16
     container_name: inventory-postgres
     restart: unless-stopped
-
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-
+      POSTGRES_DB: ${POSTGRES_DB:-inventory_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
       - "5432:5432"
-
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-inventory_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: InventoryManagement.Api/Dockerfile
+    container_name: inventory-api
+    restart: unless-stopped
+    profiles: ["api"]
+    env_file:
+      - .env
+    environment:
+      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Production}
+      - ASPNETCORE_URLS=${ASPNETCORE_URLS:-http://+:8080}
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=${POSTGRES_DB:-inventory_db};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-postgres}
+      - Jwt__Secret=${JWT_SECRET:-InventoryManagement-SuperSecretKey-2024-MustBeAtLeast32Chars!}
+      - Jwt__Issuer=${JWT_ISSUER:-InventoryManagement.Api}
+      - Jwt__Audience=${JWT_AUDIENCE:-InventoryManagement.Client}
+      - Jwt__AccessTokenMinutes=${JWT_ACCESS_TOKEN_MINUTES:-15}
+      - Jwt__RefreshTokenDays=${JWT_REFRESH_TOKEN_DAYS:-7}
+      - AdminSeed__UserName=${ADMIN_USERNAME:-admin}
+      - AdminSeed__Rut=${ADMIN_RUT:-765432105}
+      - AdminSeed__FullName=${ADMIN_FULL_NAME:-Administrador del Sistema}
+      - AdminSeed__Password=${ADMIN_PASSWORD:-Admin123!}
+      - AdminSeed__RotateOnStartup=${ADMIN_ROTATE_ON_STARTUP:-true}
+      - AdminSeed__RunOnStartup=${ADMIN_RUN_ON_STARTUP:-true}
+      - Cors__AllowedOrigins=${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173,https://localhost:3000}
+    ports:
+      - "5263:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/live"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
 
 volumes:
   postgres_data:

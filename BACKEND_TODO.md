@@ -153,9 +153,9 @@
 ## 🟣 FASE 6 - Observabilidad y Operaciones (Prioridad MEDIA)
 
 ### 6.1 Health Checks
-- [ ] `Microsoft.Extensions.Diagnostics.HealthChecks`
-- [ ] Check: DB connection, migraciones pendientes, disco, memoria
-- [ ] Endpoint: `GET /health` + `/health/ready` + `/health/live`
+- [x] `Microsoft.Extensions.Diagnostics.HealthChecks`
+- [x] Check: DB connection, migraciones pendientes, disco, memoria
+- [x] Endpoint: `GET /health` + `/health/ready` + `/health/live`
 
 ### 6.2 Métricas
 - [ ] `Prometheus` + `OpenTelemetry` (opcional)
@@ -184,13 +184,13 @@
 
 ---
 
-## 📦 FASE 8 - Preparación Frontend-Ready (Prioridad ALTA al final)
+## 📦 FASE 8 - Preparación Frontend-Ready (Prioridad ALTA al final) - **COMPLETADA ✅**
 
 ### 8.1 OpenAPI / Swagger mejorado
-- [ ] Documentación XML (`<GenerateDocumentationFile>true</GenerateDocumentationFile>`)
-- [ ] Ejemplos en request/response
-- [ ] Agrupar por tags, ordenar endpoints
-- [ ] `Swashbuckle.AspNetCore.Annotations`
+- [x] Documentación XML (`<GenerateDocumentationFile>true</GenerateDocumentationFile>`)
+- [x] Ejemplos en request/response
+- [x] Agrupar por tags, ordenar endpoints
+- [x] `Swashbuckle.AspNetCore.Annotations`
 
 ### 8.2 Generación de cliente
 - [ ] `dotnet tool install -g Microsoft.dotnet-openapi` / `kiota` / `NSwag`
@@ -198,14 +198,18 @@
 - [ ] Publicar spec OpenAPI en artifact CI
 
 ### 8.3 CORS y Headers
-- [ ] Política CORS configurada para dominio frontend
-- [ ] Headers de seguridad (HSTS, CSP, etc.)
+- [x] Política CORS configurada para dominio frontend (via .env)
+- [x] Headers de seguridad (HSTS en Production)
 
 ### 8.4 Rate Limiting
-- [ ] `Microsoft.AspNetCore.RateLimiting`
-- [ ] Políticas por IP / usuario / endpoint
+- [x] `Microsoft.AspNetCore.RateLimiting` (built-in .NET 8)
+- [x] Políticas por IP / usuario / endpoint (global, auth, api)
 
----
+### 8.5 Docker Deploy
+- [x] Dockerfile multi-stage (build + publish + runtime)
+- [x] docker-compose.yml unificado con profiles (postgres / postgres+api)
+- [x] Variables de entorno via .env
+- [x] Healthchecks en contenedores
 
 ## 📋 CHECKLIST DE "LISTO PARA FRONTEND"
 
@@ -218,15 +222,19 @@
 | ✅ Manejo errores global (ProblemDetails) | ✅ |
 | ✅ **Stock Movements / Kardex** | ✅ |
 | ✅ **Auth JWT + Roles + Auditoría** | ✅ |
-| ⬜ Health checks | ⬜ |
-| ⬜ OpenAPI completo con ejemplos | ⬜ |
+| ✅ Health checks | ✅ |
+| ✅ OpenAPI completo con ejemplos | ✅ |
 | ⬜ Cliente generable (TypeScript) | ⬜ |
 | ✅ Tests integración pasando | ✅ |
 | ⬜ CI/CD pipeline verde | ⬜ |
-| ⬜ Dockerfile multi-stage para deploy | ⬜ |
+| ✅ Dockerfile multi-stage para deploy | ✅ |
 
 ---
 
 ## 🎯 PRÓXIMO PASO RECOMENDADO
 
-**Iniciar Fase 6:** Observabilidad y Operaciones — **Health Checks** (`/health`, `/health/ready`, `/health/live`) + OpenAPI mejorado + Rate Limiting + Dockerfile multi-stage.
+**Completar Fase 5.3:** CI/CD Pipeline (GitHub Actions) + Coverage (coverlet/ReportGenerator) — lo único que queda del backend "core".
+
+Después:
+- **Fase 6.2/6.3:** Métricas (Prometheus/OpenTelemetry) + Versionado API (opcional)
+- **Fase 8.2:** Generar cliente TypeScript con Kiota/NSwag

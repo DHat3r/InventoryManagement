@@ -21,9 +21,7 @@ using InventoryManagement.Api.Common;
 using InventoryManagement.Api.Common.Exceptions;
 using InventoryManagement.Api.Middleware;
 using InventoryManagement.Api.Services;
-using AspNetCore.HealthChecks.NpgSql;
 using HealthChecks.UI.Client;
-using Swashbuckle.AspNetCore.Annotations;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -109,9 +107,7 @@ var cs = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddHealthChecks()
     .AddNpgSql(cs!, name: "postgresql", tags: new[] { "db", "ready" })
     .AddDbContextCheck<InventoryDbContext>(name: "efcore", tags: new[] { "db", "ready" })
-    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: new[] { "live" })
-    .AddDiskStorageHealthCheck(opt => opt.AddDrive("C:\\", 1_000_000_000), name: "disk", tags: new[] { "ready" })
-    .AddProcessAllocatedMemoryHealthCheck(maximumMegabytes: 1024, name: "memory", tags: new[] { "ready" });
+    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: new[] { "live" });
 
 // ─── Rate Limiting ───
 builder.Services.AddRateLimiter(options =>
@@ -1089,110 +1085,3 @@ app.Run();
 
 // Make Program class public for testing
 public partial class Program { }
-
-// ─── Swagger Example Schema Filter ───
-/// <summary>
-/// Filtro para agregar ejemplos a los esquemas en Swagger/OpenAPI
-/// </summary>
-public class SwaggerExampleSchemaFilter : Swashbuckle.AspNetCore.SwaggerGen.ISchemaFilter
-{
-    public void Apply(Microsoft.OpenApi.Models.OpenApiSchema schema, Swashbuckle.AspNetCore.SwaggerGen.SchemaFilterContext context)
-    {
-        if (context.Type == typeof(CreateCategoryDto))
-        {
-            schema.Example = new Microsoft.OpenApi.Models.OpenApiObject
-            {
-                ["name"] = new Microsoft.OpenApi.Models.OpenApiString("Electrónica"),
-                ["description"] = new Microsoft.OpenApi.Models.OpenApiString("Productos electrónicos y gadgets"),
-                ["parentCategoryId"] = new Microsoft.OpenApi.Models.OpenApiInteger(1)
-            };
-        }
-        else if (context.Type == typeof(UpdateCategoryDto))
-        {
-            schema.Example = new Microsoft.OpenApi.Models.OpenApiObject
-            {
-                ["name"] = new Microsoft.OpenApi.Models.OpenApiString("Electrónica Actualizada"),
-                ["description"] = new Microsoft.OpenApi.Models.OpenApiString("Nueva descripción"),
-                ["isActive"] = new Microsoft.OpenApi.Models.OpenApiBoolean(true),
-                ["parentCategoryId"] = new Microsoft.OpenApi.Models.OpenApiInteger(1)
-            };
-        }
-        else if (context.Type == typeof(CreateProductDto))
-        {
-            schema.Example = new Microsoft.OpenApi.Models.OpenApiObject
-            {
-                ["name"] = new Microsoft.OpenApi.Models.OpenApiString("Laptop Gaming"),
-                ["price"] = new Microsoft.OpenApi.Models.OpenApiDouble(1299.99),
-                ["cost"] = new Microsoft.OpenApi.Models.OpenApiDouble(950.00),
-                ["categoryId"] = new Microsoft.OpenApi.Models.OpenApiInteger(1),
-                ["sku"] = new Microsoft.OpenApi.Models.OpenApiString("LAP-GAM-001"),
-                ["description"] = new Microsoft.OpenApi.Models.OpenApiString("Laptop para gaming de alto rendimiento"),
-                ["stockQuantity"] = new Microsoft.OpenApi.Models.OpenApiInteger(15),
-                ["minStockLevel"] = new Microsoft.OpenApi.Models.OpenApiInteger(5),
-                ["unitOfMeasure"] = new Microsoft.OpenApi.Models.OpenApiString("UN")
-            };
-        }
-        else if (context.Type == typeof(UpdateProductDto))
-        {
-            schema.Example = new Microsoft.OpenApi.Models.OpenApiObject
-            {
-                ["name"] = new Microsoft.OpenApi.Models.OpenApiString("Laptop Gaming Pro"),
-                ["price"] = new Microsoft.OpenApi.Models.OpenApiDouble(1399.99),
-                ["cost"] = new Microsoft.OpenApi.Models.OpenApiDouble(1000.00),
-                ["categoryId"] = new Microsoft.OpenApi.Models.OpenApiInteger(1),
-                ["sku"] = new Microsoft.OpenApi.Models.OpenApiString("LAP-GAM-002"),
-                ["description"] = new Microsoft.OpenApi.Models.OpenApiString("Laptop mejorada"),
-                ["stockQuantity"] = new Microsoft.OpenApi.Models.OpenApiInteger(20),
-                ["minStockLevel"] = new Microsoft.OpenApi.Models.OpenApiInteger(5),
-                ["unitOfMeasure"] = new Microsoft.OpenApi.Models.OpenApiString("UN"),
-                ["isActive"] = new Microsoft.OpenApi.Models.OpenApiBoolean(true)
-            };
-        }
-        else if (context.Type == typeof(CreateStockMovementDto))
-        {
-            schema.Example = new Microsoft.OpenApi.Models.OpenApiObject
-            {
-                ["type"] = new Microsoft.OpenApi.Models.OpenApiString("Entrada"),
-                ["quantity"] = new Microsoft.OpenApi.Models.OpenApiInteger(10),
-                ["reason"] = new Microsoft.OpenApi.Models.OpenApiString("Compra inicial"),
-                ["reference"] = new Microsoft.OpenApi.Models.OpenApiString("FC-001"),
-                ["unitCost"] = new Microsoft.OpenApi.Models.OpenApiDouble(900.00)
-            };
-        }
-        else if (context.Type == typeof(LoginDto))
-        {
-            schema.Example = new Microsoft.OpenApi.Models.OpenApiObject
-            {
-                ["userName"] = new Microsoft.OpenApi.Models.OpenApiString("admin"),
-                ["password"] = new Microsoft.OpenApi.Models.OpenApiString("Admin123!")
-            };
-        }
-        else if (context.Type == typeof(CreateUserDto))
-        {
-            schema.Example = new Microsoft.OpenApi.Models.OpenApiObject
-            {
-                ["userName"] = new Microsoft.OpenApi.Models.OpenApiString("inventario1"),
-                ["password"] = new Microsoft.OpenApi.Models.OpenApiString("Test123!"),
-                ["fullName"] = new Microsoft.OpenApi.Models.OpenApiString("Usuario Inventario"),
-                ["role"] = new Microsoft.OpenApi.Models.OpenApiInteger(2),
-                ["rut"] = new Microsoft.OpenApi.Models.OpenApiString("12345678-5")
-            };
-        }
-        else if (context.Type == typeof(ProductFilterDto))
-        {
-            schema.Example = new Microsoft.OpenApi.Models.OpenApiObject
-            {
-                ["page"] = new Microsoft.OpenApi.Models.OpenApiInteger(1),
-                ["pageSize"] = new Microsoft.OpenApi.Models.OpenApiInteger(20),
-                ["categoryId"] = new Microsoft.OpenApi.Models.OpenApiInteger(1),
-                ["isActive"] = new Microsoft.OpenApi.Models.OpenApiBoolean(true),
-                ["search"] = new Microsoft.OpenApi.Models.OpenApiString("laptop"),
-                ["minPrice"] = new Microsoft.OpenApi.Models.OpenApiDouble(100),
-                ["maxPrice"] = new Microsoft.OpenApi.Models.OpenApiDouble(2000),
-                ["lowStockOnly"] = new Microsoft.OpenApi.Models.OpenApiBoolean(false),
-                ["sortBy"] = new Microsoft.OpenApi.Models.OpenApiString("price:desc,name:asc"),
-                ["sortDesc"] = new Microsoft.OpenApi.Models.OpenApiBoolean(false)
-            };
-        }
-    }
-}
