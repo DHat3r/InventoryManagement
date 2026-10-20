@@ -1,10 +1,14 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Threading.RateLimiting;
 using FluentValidation;
 using Mapster;
 using Serilog;
@@ -17,6 +21,9 @@ using InventoryManagement.Api.Common;
 using InventoryManagement.Api.Common.Exceptions;
 using InventoryManagement.Api.Middleware;
 using InventoryManagement.Api.Services;
+using AspNetCore.HealthChecks.NpgSql;
+using HealthChecks.UI.Client;
+using Swashbuckle.AspNetCore.Annotations;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -97,13 +104,123 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy("RequireContadorOrAdmin", p => p.RequireRole("Admin", "Contador"))
     .AddPolicy("RequireCompradorOrInventarioOrAdmin", p => p.RequireRole("Admin", "Inventario", "Comprador"));
 
+// ─── Health Checks ───
+var cs = builder.Configuration.GetConnectionString("DefaultConnection");
+builder.Services.AddHealthChecks()
+    .AddNpgSql(cs!, name: "postgresql", tags: new[] { "db", "ready" })
+    .AddDbContextCheck<InventoryDbContext>(name: "efcore", tags: new[] { "db", "ready" })
+    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: new[] { "live" })
+    .AddDiskStorageHealthCheck(opt => opt.AddDrive("C:\\", 1_000_000_000), name: "disk", tags: new[] { "ready" })
+    .AddProcessAllocatedMemoryHealthCheck(maximumMegabytes: 1024, name: "memory", tags: new[] { "ready" });
+
+// ─── Rate Limiting ───
+builder.Services.AddRateLimiter(options =>
+{
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+        RateLimitPartition.GetFixedWindowLimiter("global", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 200,
+            Window = TimeSpan.FromMinutes(1),
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = 10
+        }));
+
+    options.AddPolicy("auth", ctx =>
+        RateLimitPartition.GetFixedWindowLimiter("auth", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = 5
+        }));
+
+    options.AddPolicy("api", ctx =>
+        RateLimitPartition.GetFixedWindowLimiter("api", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 100,
+            Window = TimeSpan.FromMinutes(1),
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = 20
+        }));
+
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
+
+// ─── CORS ───
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("frontend", policy =>
+    {
+        policy.WithOrigins(
+                builder.Configuration["Cors:AllowedOrigins"]?.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                ?? new[] { "http://localhost:3000", "http://localhost:5173", "https://localhost:3000" })
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
+
+// ─── Swagger/OpenAPI mejorado ───
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SupportNonNullableReferenceTypes();
+    c.EnableAnnotations();
+
+    // Documentación XML
+    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+        c.IncludeXmlComments(xmlPath);
+
+    // JWT Bearer auth en Swagger
+    c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+        Description = "Ingrese el token JWT: Bearer {token}"
+    });
+    c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+    {
+        {
+            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            {
+                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                {
+                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
+
+// JSON: enums as strings
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+});
+
+builder.Services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(options =>
+{
+    options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+});
+
 var app = builder.Build();
 
 // ─── Pipeline ───
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(c =>
+    {
+        c.DisplayRequestDuration();
+        c.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.None);
+    });
 }
 
 // Exception Handling Middleware (must be early in pipeline)
@@ -119,9 +236,33 @@ app.UseSerilogRequestLogging(options =>
     };
 });
 
+// CORS (antes de Auth para preflight)
+app.UseCors("frontend");
+
+// Rate Limiting
+app.UseRateLimiter();
+
 // Auth middleware
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Health Checks endpoints
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("live"),
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+});
+
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+});
+
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+});
 
 // Auto-migrate on startup (dev)
 if (app.Environment.IsDevelopment())
@@ -197,7 +338,7 @@ static IQueryable<Product> ApplyMultiSort(IQueryable<Product> query, string? sor
 // ============================================================
 // CATEGORIES
 // ============================================================
-var categories = app.MapGroup("/api/categories").WithTags("Categories");
+var categories = app.MapGroup("/api/categories").WithTags("Categories").RequireRateLimiting("api");
 
 // GET all
 categories.MapGet("/", async (InventoryDbContext db) =>
@@ -249,6 +390,9 @@ categories.MapPost("/", async (CreateCategoryDto dto, IValidator<CreateCategoryD
 // PUT update
 categories.MapPut("/{id:int}", async (int id, UpdateCategoryDto dto, IValidator<UpdateCategoryDto> validator, InventoryDbContext db, ICurrentUserService currentUser) =>
 {
+    // Pasar el ID al validador ANTES de validar (unicidad y referencias circulares)
+    if (validator is UpdateCategoryValidator ucv) ucv.SetCategoryId(id);
+
     var validation = await validator.ValidateAsync(dto);
     if (!validation.IsValid) return ValidationProblem(validation);
 
@@ -318,7 +462,7 @@ categories.MapGet("/tree", async (InventoryDbContext db) =>
 // ============================================================
 // PRODUCTS
 // ============================================================
-var products = app.MapGroup("/api/products").WithTags("Products");
+var products = app.MapGroup("/api/products").WithTags("Products").RequireRateLimiting("api");
 
 // GET all (paginado, filtros, orden)
 products.MapGet("/", async (
@@ -465,14 +609,14 @@ products.MapPost("/", async (CreateProductDto dto, IValidator<CreateProductDto> 
 // PUT update
 products.MapPut("/{id:int}", async (int id, UpdateProductDto dto, IValidator<UpdateProductDto> validator, InventoryDbContext db, ICurrentUserService currentUser) =>
 {
+    // Pasar ID al validador ANTES de validar para unicidad de SKU
+    if (validator is UpdateProductValidator upv) upv.SetProductId(id);
+
     var validation = await validator.ValidateAsync(dto);
     if (!validation.IsValid) return ValidationProblem(validation);
 
     var entity = await db.Products.FindAsync(id);
     if (entity is null) throw new NotFoundException("Product", id);
-
-    // Pasar ID al validador para unicidad de SKU
-    if (validator is UpdateProductValidator upv) upv.SetProductId(id);
 
     dto.Adapt(entity);
     entity.ModifiedBy = currentUser.UserId;
@@ -745,7 +889,7 @@ products.MapGet("/{id:int}/kardex/summary", async (int id, InventoryDbContext db
 // GET /api/products/{id}/kardex/summary - Resumen valorado del kardex
 // ============================================================
 
-var auth = app.MapGroup("/api/auth").WithTags("Auth").AllowAnonymous();
+var auth = app.MapGroup("/api/auth").WithTags("Auth").AllowAnonymous().RequireRateLimiting("auth");
 
 // POST /api/auth/login
 auth.MapPost("/login", async (LoginDto dto, IValidator<LoginDto> validator, IAuthService authService) =>
@@ -825,7 +969,7 @@ auth.MapPost("/change-password", async (ChangePasswordDto dto, IValidator<Change
 // USERS ENDPOINTS (Admin only) - Fase 4
 // ============================================================
 
-var users = app.MapGroup("/api/users").WithTags("Users").RequireAuthorization("RequireAdmin");
+var users = app.MapGroup("/api/users").WithTags("Users").RequireAuthorization("RequireAdmin").RequireRateLimiting("api");
 
 // GET all users (paginado)
 users.MapGet("/", async (
@@ -942,3 +1086,113 @@ users.MapDelete("/{id:int}", async (int id, InventoryDbContext db) =>
 
 
 app.Run();
+
+// Make Program class public for testing
+public partial class Program { }
+
+// ─── Swagger Example Schema Filter ───
+/// <summary>
+/// Filtro para agregar ejemplos a los esquemas en Swagger/OpenAPI
+/// </summary>
+public class SwaggerExampleSchemaFilter : Swashbuckle.AspNetCore.SwaggerGen.ISchemaFilter
+{
+    public void Apply(Microsoft.OpenApi.Models.OpenApiSchema schema, Swashbuckle.AspNetCore.SwaggerGen.SchemaFilterContext context)
+    {
+        if (context.Type == typeof(CreateCategoryDto))
+        {
+            schema.Example = new Microsoft.OpenApi.Models.OpenApiObject
+            {
+                ["name"] = new Microsoft.OpenApi.Models.OpenApiString("Electrónica"),
+                ["description"] = new Microsoft.OpenApi.Models.OpenApiString("Productos electrónicos y gadgets"),
+                ["parentCategoryId"] = new Microsoft.OpenApi.Models.OpenApiInteger(1)
+            };
+        }
+        else if (context.Type == typeof(UpdateCategoryDto))
+        {
+            schema.Example = new Microsoft.OpenApi.Models.OpenApiObject
+            {
+                ["name"] = new Microsoft.OpenApi.Models.OpenApiString("Electrónica Actualizada"),
+                ["description"] = new Microsoft.OpenApi.Models.OpenApiString("Nueva descripción"),
+                ["isActive"] = new Microsoft.OpenApi.Models.OpenApiBoolean(true),
+                ["parentCategoryId"] = new Microsoft.OpenApi.Models.OpenApiInteger(1)
+            };
+        }
+        else if (context.Type == typeof(CreateProductDto))
+        {
+            schema.Example = new Microsoft.OpenApi.Models.OpenApiObject
+            {
+                ["name"] = new Microsoft.OpenApi.Models.OpenApiString("Laptop Gaming"),
+                ["price"] = new Microsoft.OpenApi.Models.OpenApiDouble(1299.99),
+                ["cost"] = new Microsoft.OpenApi.Models.OpenApiDouble(950.00),
+                ["categoryId"] = new Microsoft.OpenApi.Models.OpenApiInteger(1),
+                ["sku"] = new Microsoft.OpenApi.Models.OpenApiString("LAP-GAM-001"),
+                ["description"] = new Microsoft.OpenApi.Models.OpenApiString("Laptop para gaming de alto rendimiento"),
+                ["stockQuantity"] = new Microsoft.OpenApi.Models.OpenApiInteger(15),
+                ["minStockLevel"] = new Microsoft.OpenApi.Models.OpenApiInteger(5),
+                ["unitOfMeasure"] = new Microsoft.OpenApi.Models.OpenApiString("UN")
+            };
+        }
+        else if (context.Type == typeof(UpdateProductDto))
+        {
+            schema.Example = new Microsoft.OpenApi.Models.OpenApiObject
+            {
+                ["name"] = new Microsoft.OpenApi.Models.OpenApiString("Laptop Gaming Pro"),
+                ["price"] = new Microsoft.OpenApi.Models.OpenApiDouble(1399.99),
+                ["cost"] = new Microsoft.OpenApi.Models.OpenApiDouble(1000.00),
+                ["categoryId"] = new Microsoft.OpenApi.Models.OpenApiInteger(1),
+                ["sku"] = new Microsoft.OpenApi.Models.OpenApiString("LAP-GAM-002"),
+                ["description"] = new Microsoft.OpenApi.Models.OpenApiString("Laptop mejorada"),
+                ["stockQuantity"] = new Microsoft.OpenApi.Models.OpenApiInteger(20),
+                ["minStockLevel"] = new Microsoft.OpenApi.Models.OpenApiInteger(5),
+                ["unitOfMeasure"] = new Microsoft.OpenApi.Models.OpenApiString("UN"),
+                ["isActive"] = new Microsoft.OpenApi.Models.OpenApiBoolean(true)
+            };
+        }
+        else if (context.Type == typeof(CreateStockMovementDto))
+        {
+            schema.Example = new Microsoft.OpenApi.Models.OpenApiObject
+            {
+                ["type"] = new Microsoft.OpenApi.Models.OpenApiString("Entrada"),
+                ["quantity"] = new Microsoft.OpenApi.Models.OpenApiInteger(10),
+                ["reason"] = new Microsoft.OpenApi.Models.OpenApiString("Compra inicial"),
+                ["reference"] = new Microsoft.OpenApi.Models.OpenApiString("FC-001"),
+                ["unitCost"] = new Microsoft.OpenApi.Models.OpenApiDouble(900.00)
+            };
+        }
+        else if (context.Type == typeof(LoginDto))
+        {
+            schema.Example = new Microsoft.OpenApi.Models.OpenApiObject
+            {
+                ["userName"] = new Microsoft.OpenApi.Models.OpenApiString("admin"),
+                ["password"] = new Microsoft.OpenApi.Models.OpenApiString("Admin123!")
+            };
+        }
+        else if (context.Type == typeof(CreateUserDto))
+        {
+            schema.Example = new Microsoft.OpenApi.Models.OpenApiObject
+            {
+                ["userName"] = new Microsoft.OpenApi.Models.OpenApiString("inventario1"),
+                ["password"] = new Microsoft.OpenApi.Models.OpenApiString("Test123!"),
+                ["fullName"] = new Microsoft.OpenApi.Models.OpenApiString("Usuario Inventario"),
+                ["role"] = new Microsoft.OpenApi.Models.OpenApiInteger(2),
+                ["rut"] = new Microsoft.OpenApi.Models.OpenApiString("12345678-5")
+            };
+        }
+        else if (context.Type == typeof(ProductFilterDto))
+        {
+            schema.Example = new Microsoft.OpenApi.Models.OpenApiObject
+            {
+                ["page"] = new Microsoft.OpenApi.Models.OpenApiInteger(1),
+                ["pageSize"] = new Microsoft.OpenApi.Models.OpenApiInteger(20),
+                ["categoryId"] = new Microsoft.OpenApi.Models.OpenApiInteger(1),
+                ["isActive"] = new Microsoft.OpenApi.Models.OpenApiBoolean(true),
+                ["search"] = new Microsoft.OpenApi.Models.OpenApiString("laptop"),
+                ["minPrice"] = new Microsoft.OpenApi.Models.OpenApiDouble(100),
+                ["maxPrice"] = new Microsoft.OpenApi.Models.OpenApiDouble(2000),
+                ["lowStockOnly"] = new Microsoft.OpenApi.Models.OpenApiBoolean(false),
+                ["sortBy"] = new Microsoft.OpenApi.Models.OpenApiString("price:desc,name:asc"),
+                ["sortDesc"] = new Microsoft.OpenApi.Models.OpenApiBoolean(false)
+            };
+        }
+    }
+}

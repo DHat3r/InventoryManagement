@@ -21,6 +21,10 @@ public class CreateCategoryValidator : AbstractValidator<CreateCategoryDto>
             .MaximumLength(100).WithMessage("El nombre no puede exceder 100 caracteres")
             .Matches(@"^[\p{L}\p{N}\s\-']+$").WithMessage("El nombre solo puede contener letras, números, espacios, guiones y apóstrofes");
 
+        RuleFor(x => x.Name)
+            .MustAsync(NameUnique).WithMessage("Ya existe una categoría con este nombre")
+            .When(x => !string.IsNullOrWhiteSpace(x.Name));
+
         RuleFor(x => x.Description)
             .MaximumLength(500).WithMessage("La descripción no puede exceder 500 caracteres")
             .When(x => !string.IsNullOrEmpty(x.Description));
@@ -34,6 +38,12 @@ public class CreateCategoryValidator : AbstractValidator<CreateCategoryDto>
     {
         if (!parentCategoryId.HasValue) return true;
         return await _db.Categories.AnyAsync(c => c.Id == parentCategoryId.Value && c.IsActive, ct);
+    }
+
+    private async Task<bool> NameUnique(string name, CancellationToken ct)
+    {
+        var normalized = name.Trim().ToLower();
+        return !await _db.Categories.AnyAsync(c => c.Name.ToLower() == normalized, ct);
     }
 }
 
@@ -53,6 +63,10 @@ public class UpdateCategoryValidator : AbstractValidator<UpdateCategoryDto>
             .NotEmpty().WithMessage("El nombre es obligatorio")
             .MaximumLength(100).WithMessage("El nombre no puede exceder 100 caracteres")
             .Matches(@"^[\p{L}\p{N}\s\-']+$").WithMessage("El nombre solo puede contener letras, números, espacios, guiones y apóstrofes");
+
+        RuleFor(x => x.Name)
+            .MustAsync(NameUniqueForUpdate).WithMessage("Ya existe una categoría con este nombre")
+            .When(x => !string.IsNullOrWhiteSpace(x.Name) && _categoryId.HasValue);
 
         RuleFor(x => x.Description)
             .MaximumLength(500).WithMessage("La descripción no puede exceder 500 caracteres")
@@ -77,6 +91,13 @@ public class UpdateCategoryValidator : AbstractValidator<UpdateCategoryDto>
     {
         if (!parentCategoryId.HasValue) return true;
         return await _db.Categories.AnyAsync(c => c.Id == parentCategoryId.Value && c.IsActive, ct);
+    }
+
+    private async Task<bool> NameUniqueForUpdate(string name, CancellationToken ct)
+    {
+        var normalized = name.Trim().ToLower();
+        return !await _db.Categories.AnyAsync(c =>
+            c.Name.ToLower() == normalized && c.Id != _categoryId!.Value, ct);
     }
 
     private async Task<bool> NotCircularReference(UpdateCategoryDto dto, CancellationToken ct)

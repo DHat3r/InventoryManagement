@@ -5,6 +5,10 @@ namespace InventoryManagement.Api.Models;
 
 public class InventoryDbContext : DbContext
 {
+    public InventoryDbContext() : base()
+    {
+    }
+
     public InventoryDbContext(DbContextOptions<InventoryDbContext> options) : base(options)
     {
     }

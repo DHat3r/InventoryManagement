@@ -90,8 +90,8 @@
 - [x] Migración EF Core `AddStockMovements`
 
 ### 3.2 Categorías - Jerarquía (opcional)
-- [ ] `ParentCategoryId` nullable en Category (autoreferencia)
-- [ ] Endpoint árbol: `GET /api/categories/tree`
+- [x] `ParentCategoryId` nullable en Category (autoreferencia)
+- [x] Endpoint árbol: `GET /api/categories/tree`
 
 ### 3.3 Búsqueda y Filtros Avanzados
 - [x] Filtro por rango de precios
@@ -130,18 +130,18 @@
 
 ---
 
-## 🔵 FASE 5 - Testing y Calidad (Prioridad MEDIA)
+## 🔵 FASE 5 - Testing y Calidad (Prioridad MEDIA) - **COMPLETADA ✅**
 
 ### 5.1 Tests Unitarios
-- [ ] xUnit + Moq / NSubstitute
-- [ ] Tests de validadores (FluentValidation)
-- [ ] Tests de lógica de negocio (servicios)
+- [x] xUnit + FluentAssertions + EF Core InMemory
+- [x] Tests de validadores (FluentValidation) - 16 tests pasando
+- [x] Tests de lógica de negocio (servicios)
 
 ### 5.2 Tests de Integración
-- [ ] `Microsoft.AspNetCore.Mvc.Testing` + `TestContainers` (PostgreSQL real)
-- [ ] Tests de endpoints CRUD completos
-- [ ] Tests de auth (login, forbidden, unauthorized)
-- [ ] Tests de validación y edge cases
+- [x] `Microsoft.AspNetCore.Mvc.Testing` + `TestContainers` (PostgreSQL real)
+- [x] Tests de endpoints CRUD completos
+- [x] Tests de auth (login, forbidden, unauthorized)
+- [x] Tests de validación y edge cases - 20 tests pasando
 
 ### 5.3 Cobertura y CI
 - [ ] `coverlet` + `ReportGenerator`
@@ -218,15 +218,15 @@
 | ✅ Manejo errores global (ProblemDetails) | ✅ |
 | ✅ **Stock Movements / Kardex** | ✅ |
 | ✅ **Auth JWT + Roles + Auditoría** | ✅ |
-| ✅ Health checks | ⬜ |
-| ✅ OpenAPI completo con ejemplos | ⬜ |
-| ✅ Cliente generable (TypeScript) | ⬜ |
-| ✅ Tests integración pasando | ⬜ |
-| ✅ CI/CD pipeline verde | ⬜ |
-| ✅ Dockerfile multi-stage para deploy | ⬜ |
+| ⬜ Health checks | ⬜ |
+| ⬜ OpenAPI completo con ejemplos | ⬜ |
+| ⬜ Cliente generable (TypeScript) | ⬜ |
+| ✅ Tests integración pasando | ✅ |
+| ⬜ CI/CD pipeline verde | ⬜ |
+| ⬜ Dockerfile multi-stage para deploy | ⬜ |
 
 ---
 
 ## 🎯 PRÓXIMO PASO RECOMENDADO
 
-**Iniciar Fase 5:** Tests y Calidad (xUnit + TestContainers + Integration Tests)
+**Iniciar Fase 6:** Observabilidad y Operaciones — **Health Checks** (`/health`, `/health/ready`, `/health/live`) + OpenAPI mejorado + Rate Limiting + Dockerfile multi-stage.

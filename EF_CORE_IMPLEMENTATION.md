@@ -1847,10 +1847,89 @@ POST http://localhost:5263/api/auth/logout
 
 ### Próximos pasos (Fase 5+)
 
-* [ ] Tests unitarios (xUnit + FluentValidation tests)
-* [ ] Tests de integración (TestContainers + WebApplicationFactory)
+* [x] Tests unitarios (xUnit + FluentAssertions + EF InMemory)
+* [x] Tests de integración (TestContainers + WebApplicationFactory)
 * [ ] Health Checks (/health, /health/ready, /health/live)
 * [ ] OpenAPI mejorado (ejemplos, XML docs, annotations)
 * [ ] Rate Limiting
 * [ ] CORS configurado para frontend
 * [ ] Dockerfile multi-stage para deploy
+
+***
+
+## 🧪 FASE 5.1 - Tests unitarios e integración (Agregado 19/10/2026)
+
+### Estado
+
+```bash
+cd InventoryManagement.Tests
+dotnet test
+# Correctas! - Con error: 0, Superado: 36, Omitido: 0, Total: 36
+```
+
+| Tipo | Cantidad | Herramientas |
+|------|----------|--------------|
+| Unitarios (validadores) | 16 | xUnit + FluentAssertions + EF Core InMemory |
+| Integración (API completa) | 20 | TestContainers PostgreSQL + WebApplicationFactory |
+
+### Estructura de tests
+
+```
+InventoryManagement.Tests/
+├── Infrastructure/
+│   ├── TestWebApplicationFactory.cs   # Contenedor PostgreSQL + migración
+│   └── IntegrationTestBase.cs         # Cliente autenticado como admin
+├── Unit/Validators/
+│   ├── CategoryValidatorsTests.cs
+│   └── ProductValidatorsTests.cs
+└── Integration/
+    ├── Auth/AuthIntegrationTests.cs
+    ├── Categories/CategoriesIntegrationTests.cs
+    ├── Products/ProductsIntegrationTests.cs
+    └── StockMovements/StockMovementsIntegrationTests.cs
+```
+
+### Decisión clave: `TargetFramework = net8.0`
+
+El proyecto de tests **debe** apuntar a `net8.0` igual que la API. Con `net10.0` y
+`Microsoft.AspNetCore.Mvc.Testing 8.0.10`, el `TestServer` usa un `PipeWriter` de
+TestHost 8 que no implementa `PipeWriter.UnflushedBytes`, y `System.Text.Json` 10
+lanza:
+
+```
+System.InvalidOperationException: The PipeWriter 'ResponseBodyPipeWriter'
+does not implement PipeWriter.UnflushedBytes.
+```
+
+Todas las respuestas JSON terminaban en 500. Al alinear el TFM con la API se resuelve.
+
+### TestWebApplicationFactory
+
+- Inicia el contenedor en `InitializeAsync` (xUnit class fixture).
+- Reemplaza el `DbContext` de producción por el del contenedor.
+- Aplica `Database.Migrate()` durante `ConfigureWebHost`, antes de que
+  `Program.cs` ejecute el seed del admin.
+- El seed del admin lo sigue haciendo la aplicación al arrancar
+  (`AdminSeed:RunOnStartup = true`), reutilizando la misma configuración.
+
+### IntegrationTestBase
+
+Los endpoints de categorías, productos y kardex requieren JWT. La clase base:
+
+1. Crea el cliente con `WebApplicationFactory.CreateClient()`.
+2. Hace `POST /api/auth/login` con `admin / Admin123!`.
+3. Agrega `Authorization: Bearer <accessToken>` por defecto.
+4. Configura `JsonStringEnumConverter` (la API serializa enums como texto).
+
+### Correcciones de lógica detectadas por los tests
+
+1. **Unicidad de nombre de categoría**: se agregó `NameUnique` / `NameUniqueForUpdate`
+   a `CreateCategoryValidator` y `UpdateCategoryValidator` (antes la BD lanzaba una
+   violación de índice único y el endpoint devolvía 500 en lugar de 400).
+2. **Orden de validación en updates**: `SetCategoryId(id)` y `SetProductId(id)` ahora
+   se ejecutan **antes** de `ValidateAsync`. Antes la unicidad de SKU/nombre y la
+   detección de referencias circulares se saltaban en los PUT.
+3. **Tests unitarios con InMemory**: los datos de prueba se siembran en el **mismo**
+   `InventoryDbContext` que usa el validador (antes cada test creaba dos contextos
+   distintos y las validaciones contra BD nunca encontraban datos).
+
