@@ -14,7 +14,18 @@ public static class MapsterConfig
         // Category -> CategoryDto
         TypeAdapterConfig<Category, CategoryDto>
             .NewConfig()
-            .Map(dest => dest.ProductsCount, src => src.Products != null ? src.Products.Count : 0);
+            .Map(dest => dest.ProductsCount, src => src.Products != null ? src.Products.Count : 0)
+            .Map(dest => dest.ParentCategoryId, src => src.ParentCategoryId)
+            .Map(dest => dest.ParentCategoryName, src => src.ParentCategory != null ? src.ParentCategory.Name : null);
+
+        // Category -> CategoryTreeDto (no recursive - se construye manualmente en endpoint)
+        TypeAdapterConfig<Category, CategoryTreeDto>
+            .NewConfig()
+            .Map(dest => dest.Id, src => src.Id)
+            .Map(dest => dest.Name, src => src.Name)
+            .Map(dest => dest.Description, src => src.Description)
+            .Map(dest => dest.IsActive, src => src.IsActive)
+            .Map(dest => dest.Children, src => new List<CategoryTreeDto>());
 
         // Category -> CategoryRefDto (ligero)
         TypeAdapterConfig<Category, CategoryRefDto>
@@ -29,7 +40,9 @@ public static class MapsterConfig
             .Map(dest => dest.IsActive, _ => true)
             .Ignore(dest => dest.Id)
             .Ignore(dest => dest.UpdatedAt)
-            .Ignore(dest => dest.Products);
+            .Ignore(dest => dest.Products)
+            .Ignore(dest => dest.ParentCategory)
+            .Ignore(dest => dest.ChildCategories);
 
         // UpdateCategoryDto -> Category (para actualización parcial)
         TypeAdapterConfig<UpdateCategoryDto, Category>
@@ -37,7 +50,9 @@ public static class MapsterConfig
             .Map(dest => dest.UpdatedAt, _ => DateTime.UtcNow)
             .Ignore(dest => dest.Id)
             .Ignore(dest => dest.CreatedAt)
-            .Ignore(dest => dest.Products);
+            .Ignore(dest => dest.Products)
+            .Ignore(dest => dest.ParentCategory)
+            .Ignore(dest => dest.ChildCategories);
 
         // Product -> ProductDto (completo)
         TypeAdapterConfig<Product, ProductDto>
@@ -46,7 +61,7 @@ public static class MapsterConfig
             .Map(dest => dest.SKU, src => src.SKU)
             .Map(dest => dest.Description, src => src.Description)
             .Map(dest => dest.IsLowStock, src => src.StockQuantity <= src.MinStockLevel)
-            .Map(dest => dest.MarginPercentage, src => 
+            .Map(dest => dest.MarginPercentage, src =>
                 src.Cost > 0 ? Math.Round(((src.Price - src.Cost) / src.Cost) * 100, 2) : 0);
 
         // Product -> ProductListDto (ligero para listados)
@@ -101,10 +116,6 @@ public static class MapsterConfig
             .Ignore(dest => dest.CreatedAt)
             .Ignore(dest => dest.Category);
 
-        // ============================================================
-        // STOCK MOVEMENTS (Fase 3)
-        // ============================================================
-
         // StockMovement -> StockMovementDto (completo)
         TypeAdapterConfig<StockMovement, StockMovementDto>
             .NewConfig()
@@ -123,10 +134,6 @@ public static class MapsterConfig
             .Ignore(dest => dest.Product)
             .Ignore(dest => dest.PreviousStock)
             .Ignore(dest => dest.NewStock);
-
-        // ============================================================
-        // USERS & AUTH (Fase 4)
-        // ============================================================
 
         // User -> UserInfoDto
         TypeAdapterConfig<User, UserInfoDto>
@@ -167,13 +174,12 @@ public static class MapsterConfig
             .Ignore(dest => dest.CategoriesModified)
             .Ignore(dest => dest.ProductsCreated)
             .Ignore(dest => dest.ProductsModified);
-
     }
 
     private static CategoryRefDto MapCategoryRef(Category? category)
     {
-        return category != null 
-            ? new CategoryRefDto(category.Id, category.Name) 
+        return category != null
+            ? new CategoryRefDto(category.Id, category.Name)
             : new CategoryRefDto(0, string.Empty);
     }
 

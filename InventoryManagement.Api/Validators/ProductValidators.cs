@@ -175,5 +175,16 @@ public class ProductFilterValidator : AbstractValidator<ProductFilterDto>
         RuleFor(x => x)
             .Must(x => !x.MinPrice.HasValue || !x.MaxPrice.HasValue || x.MinPrice <= x.MaxPrice)
             .WithMessage("El precio mínimo no puede ser mayor al precio máximo");
+
+        // Validaciones de fechas
+        RuleFor(x => x.CreatedAtFrom)
+            .LessThanOrEqualTo(x => x.CreatedAtTo)
+            .WithMessage("La fecha de creación 'desde' no puede ser mayor a 'hasta'")
+            .When(x => x.CreatedAtFrom.HasValue && x.CreatedAtTo.HasValue);
+
+        RuleFor(x => x.UpdatedAtFrom)
+            .LessThanOrEqualTo(x => x.UpdatedAtTo)
+            .WithMessage("La fecha de actualización 'desde' no puede ser mayor a 'hasta'")
+            .When(x => x.UpdatedAtFrom.HasValue && x.UpdatedAtTo.HasValue);
     }
 }

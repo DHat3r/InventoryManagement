@@ -94,9 +94,9 @@
 - [ ] Endpoint árbol: `GET /api/categories/tree`
 
 ### 3.3 Búsqueda y Filtros Avanzados
-- [ ] Filtro por rango de precios
-- [ ] Filtro por rango de fechas (creación/actualización)
-- [ ] Ordenamiento dinámico (?sort=price:desc,name:asc)
+- [x] Filtro por rango de precios
+- [x] Filtro por rango de fechas (creación/actualización)
+- [x] Ordenamiento dinámico multi-campo (?sort=price:desc,name:asc)
 - [ ] Búsqueda full-text (PostgreSQL tsvector) - opcional
 
 ---

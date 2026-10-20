@@ -55,6 +55,9 @@ namespace InventoryManagement.Api.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<int?>("ParentCategoryId")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -67,13 +70,15 @@ namespace InventoryManagement.Api.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
+                    b.HasIndex("ParentCategoryId");
+
                     b.ToTable("categories", (string)null);
 
                     b.HasData(
                         new
                         {
                             Id = 1,
-                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1668),
+                            CreatedAt = new DateTime(2026, 10, 20, 0, 25, 23, 877, DateTimeKind.Utc).AddTicks(3176),
                             Description = "Productos electrónicos y tecnológicos",
                             IsActive = true,
                             Name = "Electrónica"
@@ -81,7 +86,7 @@ namespace InventoryManagement.Api.Migrations
                         new
                         {
                             Id = 2,
-                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1669),
+                            CreatedAt = new DateTime(2026, 10, 20, 0, 25, 23, 877, DateTimeKind.Utc).AddTicks(3178),
                             Description = "Prendas de vestir y accesorios",
                             IsActive = true,
                             Name = "Ropa"
@@ -89,7 +94,7 @@ namespace InventoryManagement.Api.Migrations
                         new
                         {
                             Id = 3,
-                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1670),
+                            CreatedAt = new DateTime(2026, 10, 20, 0, 25, 23, 877, DateTimeKind.Utc).AddTicks(3179),
                             Description = "Artículos para el hogar y decoración",
                             IsActive = true,
                             Name = "Hogar"
@@ -97,7 +102,7 @@ namespace InventoryManagement.Api.Migrations
                         new
                         {
                             Id = 4,
-                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1671),
+                            CreatedAt = new DateTime(2026, 10, 20, 0, 25, 23, 877, DateTimeKind.Utc).AddTicks(3180),
                             Description = "Equipamiento y ropa deportiva",
                             IsActive = true,
                             Name = "Deportes"
@@ -190,7 +195,7 @@ namespace InventoryManagement.Api.Migrations
                             Id = 1,
                             CategoryId = 1,
                             Cost = 950.00m,
-                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1810),
+                            CreatedAt = new DateTime(2026, 10, 20, 0, 25, 23, 877, DateTimeKind.Utc).AddTicks(3313),
                             Description = "Laptop para gaming de alto rendimiento",
                             IsActive = true,
                             MinStockLevel = 5,
@@ -205,7 +210,7 @@ namespace InventoryManagement.Api.Migrations
                             Id = 2,
                             CategoryId = 1,
                             Cost = 25.00m,
-                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1812),
+                            CreatedAt = new DateTime(2026, 10, 20, 0, 25, 23, 877, DateTimeKind.Utc).AddTicks(3315),
                             Description = "Mouse ergonómico inalámbrico",
                             IsActive = true,
                             MinStockLevel = 10,
@@ -220,7 +225,7 @@ namespace InventoryManagement.Api.Migrations
                             Id = 3,
                             CategoryId = 1,
                             Cost = 45.00m,
-                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1814),
+                            CreatedAt = new DateTime(2026, 10, 20, 0, 25, 23, 877, DateTimeKind.Utc).AddTicks(3316),
                             Description = "Teclado mecánico RGB",
                             IsActive = true,
                             MinStockLevel = 8,
@@ -235,7 +240,7 @@ namespace InventoryManagement.Api.Migrations
                             Id = 4,
                             CategoryId = 4,
                             Cost = 12.00m,
-                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1815),
+                            CreatedAt = new DateTime(2026, 10, 20, 0, 25, 23, 877, DateTimeKind.Utc).AddTicks(3318),
                             Description = "Camiseta transpirable para deporte",
                             IsActive = true,
                             MinStockLevel = 20,
@@ -250,7 +255,7 @@ namespace InventoryManagement.Api.Migrations
                             Id = 5,
                             CategoryId = 4,
                             Cost = 65.00m,
-                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1817),
+                            CreatedAt = new DateTime(2026, 10, 20, 0, 25, 23, 877, DateTimeKind.Utc).AddTicks(3319),
                             Description = "Zapatillas para running profesionales",
                             IsActive = true,
                             MinStockLevel = 10,
@@ -265,7 +270,7 @@ namespace InventoryManagement.Api.Migrations
                             Id = 6,
                             CategoryId = 3,
                             Cost = 18.00m,
-                            CreatedAt = new DateTime(2026, 10, 19, 23, 11, 16, 459, DateTimeKind.Utc).AddTicks(1818),
+                            CreatedAt = new DateTime(2026, 10, 20, 0, 25, 23, 877, DateTimeKind.Utc).AddTicks(3321),
                             Description = "Lámpara de escritorio LED regulable",
                             IsActive = true,
                             MinStockLevel = 10,
@@ -450,9 +455,16 @@ namespace InventoryManagement.Api.Migrations
                         .HasForeignKey("ModifiedBy")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("InventoryManagement.Api.Models.Category", "ParentCategory")
+                        .WithMany("ChildCategories")
+                        .HasForeignKey("ParentCategoryId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("CreatedByUser");
 
                     b.Navigation("ModifiedByUser");
+
+                    b.Navigation("ParentCategory");
                 });
 
             modelBuilder.Entity("InventoryManagement.Api.Models.Product", b =>
@@ -511,6 +523,8 @@ namespace InventoryManagement.Api.Migrations
 
             modelBuilder.Entity("InventoryManagement.Api.Models.Category", b =>
                 {
+                    b.Navigation("ChildCategories");
+
                     b.Navigation("Products");
                 });
 

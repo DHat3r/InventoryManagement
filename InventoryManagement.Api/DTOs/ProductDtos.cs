@@ -87,6 +87,10 @@ public record ProductFilterDto(
     decimal? MinPrice = null,
     decimal? MaxPrice = null,
     bool? LowStockOnly = null,
-    string? SortBy = null, // name, price, stock, createdAt
+    DateTime? CreatedAtFrom = null,
+    DateTime? CreatedAtTo = null,
+    DateTime? UpdatedAtFrom = null,
+    DateTime? UpdatedAtTo = null,
+    string? SortBy = null, // name, price, stock, createdAt, updatedAt (multi: "price:desc,name:asc")
     bool SortDesc = false
 );

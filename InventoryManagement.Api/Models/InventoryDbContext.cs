@@ -38,8 +38,15 @@ public class InventoryDbContext : DbContext
                   .WithMany(u => u.CategoriesModified)
                   .HasForeignKey(e => e.ModifiedBy)
                   .OnDelete(DeleteBehavior.SetNull);
+
+            // Jerarquía de categorías (Fase 3.2) - Self-referencing FK
+            entity.HasOne(e => e.ParentCategory)
+                  .WithMany(c => c.ChildCategories)
+                  .HasForeignKey(e => e.ParentCategoryId)
+                  .OnDelete(DeleteBehavior.Restrict);
             
             entity.HasIndex(e => e.Name).IsUnique();
+            entity.HasIndex(e => e.ParentCategoryId);
         });
 
         // Product configuration

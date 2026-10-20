@@ -1,6 +1,7 @@
 using FluentValidation;
 using InventoryManagement.Api.DTOs;
 using InventoryManagement.Api.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace InventoryManagement.Api.Validators;
 
@@ -9,8 +10,12 @@ namespace InventoryManagement.Api.Validators;
 /// </summary>
 public class CreateCategoryValidator : AbstractValidator<CreateCategoryDto>
 {
-    public CreateCategoryValidator()
+    private readonly InventoryDbContext _db;
+
+    public CreateCategoryValidator(InventoryDbContext db)
     {
+        _db = db;
+
         RuleFor(x => x.Name)
             .NotEmpty().WithMessage("El nombre es obligatorio")
             .MaximumLength(100).WithMessage("El nombre no puede exceder 100 caracteres")
@@ -19,6 +24,16 @@ public class CreateCategoryValidator : AbstractValidator<CreateCategoryDto>
         RuleFor(x => x.Description)
             .MaximumLength(500).WithMessage("La descripción no puede exceder 500 caracteres")
             .When(x => !string.IsNullOrEmpty(x.Description));
+
+        RuleFor(x => x.ParentCategoryId)
+            .MustAsync(ParentCategoryExists).WithMessage("La categoría padre no existe")
+            .When(x => x.ParentCategoryId.HasValue);
+    }
+
+    private async Task<bool> ParentCategoryExists(int? parentCategoryId, CancellationToken ct)
+    {
+        if (!parentCategoryId.HasValue) return true;
+        return await _db.Categories.AnyAsync(c => c.Id == parentCategoryId.Value && c.IsActive, ct);
     }
 }
 
@@ -27,8 +42,13 @@ public class CreateCategoryValidator : AbstractValidator<CreateCategoryDto>
 /// </summary>
 public class UpdateCategoryValidator : AbstractValidator<UpdateCategoryDto>
 {
-    public UpdateCategoryValidator()
+    private readonly InventoryDbContext _db;
+    private int? _categoryId;
+
+    public UpdateCategoryValidator(InventoryDbContext db)
     {
+        _db = db;
+
         RuleFor(x => x.Name)
             .NotEmpty().WithMessage("El nombre es obligatorio")
             .MaximumLength(100).WithMessage("El nombre no puede exceder 100 caracteres")
@@ -37,5 +57,43 @@ public class UpdateCategoryValidator : AbstractValidator<UpdateCategoryDto>
         RuleFor(x => x.Description)
             .MaximumLength(500).WithMessage("La descripción no puede exceder 500 caracteres")
             .When(x => !string.IsNullOrEmpty(x.Description));
+
+        RuleFor(x => x.ParentCategoryId)
+            .MustAsync(ParentCategoryExists).WithMessage("La categoría padre no existe")
+            .When(x => x.ParentCategoryId.HasValue);
+
+        RuleFor(x => x)
+            .MustAsync(NotCircularReference).WithMessage("No se puede asignar una categoría como padre de sí misma o de sus descendientes")
+            .When(x => x.ParentCategoryId.HasValue);
+    }
+
+    public UpdateCategoryValidator SetCategoryId(int categoryId)
+    {
+        _categoryId = categoryId;
+        return this;
+    }
+
+    private async Task<bool> ParentCategoryExists(int? parentCategoryId, CancellationToken ct)
+    {
+        if (!parentCategoryId.HasValue) return true;
+        return await _db.Categories.AnyAsync(c => c.Id == parentCategoryId.Value && c.IsActive, ct);
+    }
+
+    private async Task<bool> NotCircularReference(UpdateCategoryDto dto, CancellationToken ct)
+    {
+        if (!_categoryId.HasValue || !dto.ParentCategoryId.HasValue) return true;
+        
+        // No puede ser padre de sí misma
+        if (dto.ParentCategoryId == _categoryId) return false;
+        
+        // Verificar que no sea descendiente (evitar ciclos)
+        var currentParentId = dto.ParentCategoryId;
+        while (currentParentId.HasValue)
+        {
+            if (currentParentId == _categoryId) return false;
+            var parent = await _db.Categories.FirstOrDefaultAsync(c => c.Id == currentParentId.Value, ct);
+            currentParentId = parent?.ParentCategoryId;
+        }
+        return true;
     }
 }

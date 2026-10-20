@@ -1489,62 +1489,55 @@ Resumen valorado para contador.
 }
 ```
 
-### JSON String Enum Converter (requerido para Minimal APIs)
-
-```csharp
-builder.Services.ConfigureHttpJsonOptions(options =>
-{
-    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
-});
-builder.Services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(options =>
-{
-    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
-});
-```
-
-> Sin esto, `MovementType` se serializa como integer (1,2,3) en lugar de string ("Entrada","Salida","Ajuste").
-
-### Verificación funcional completa
-
-```bash
-# 1. Build y migración
-dotnet build
-dotnet ef migrations add AddStockMovements
-dotnet ef database update
-
-# 2. Ejecutar
-dotnet run --urls "http://localhost:5263"
-
-# 3. Probar flujo completo
-# 3.1 Entrada
-POST http://localhost:5263/api/products/1/movements
-{ "type": "Entrada", "quantity": 10, "reason": "Compra", "reference": "FC-001", "unitCost": 900 }
-
-# 3.2 Salida (usa costo promedio del producto si no se envía unitCost)
-POST http://localhost:5263/api/products/1/movements
-{ "type": "Salida", "quantity": 5, "reason": "Venta", "reference": "FV-001" }
-
-# 3.3 Ajuste positivo (con UnitCost = entrada)
-POST http://localhost:5263/api/products/1/movements
-{ "type": "Ajuste", "quantity": 3, "reason": "Inventario fisico", "reference": "INV-001", "unitCost": 950 }
-
-# 3.4 Ajuste negativo (sin UnitCost = salida)
-POST http://localhost:5263/api/products/1/movements
-{ "type": "Ajuste", "quantity": 2, "reason": "Merma", "reference": "MER-001" }
-
-# 3.5 Verificar stock actualizado
-GET http://localhost:5263/api/products/1
-
-# 3.6 Kardex paginado
-GET http://localhost:5263/api/products/1/kardex?page=1&pageSize=10&type=Salida
-
-# 3.7 Resumen valorado (para contador)
-GET http://localhost:5263/api/products/1/kardex/summary
-
 # 3.8 Validación stock insuficiente (debe fallar 400)
 POST http://localhost:5263/api/products/1/movements
 { "type": "Salida", "quantity": 999, "reason": "Imposible" }
+
+### 3.3 Búsqueda y Filtros Avanzados (completado)
+
+#### Filtros de fechas
+- `CreatedAtFrom` / `CreatedAtTo` — rango de fecha de creación
+- `UpdatedAtFrom` / `UpdatedAtTo` — rango de fecha de actualización
+
+```bash
+# Productos creados desde una fecha
+GET http://localhost:5263/api/products?CreatedAtFrom=2026-10-19
+
+# Productos creados en rango
+GET http://localhost:5263/api/products?CreatedAtFrom=2026-10-19&CreatedAtTo=2026-10-20
+
+# Productos actualizados desde una fecha
+GET http://localhost:5263/api/products?UpdatedAtFrom=2026-10-19
 ```
+
+#### Ordenamiento multi-campo
+Sintaxis: `?sort=campo1:direccion,campo2:direccion`
+
+```bash
+# Precio descendente, luego nombre ascendente
+GET http://localhost:5263/api/products?sortBy=price:desc,name:asc
+
+# Stock ascendente, luego fecha creación descendente
+GET http://localhost:5263/api/products?sortBy=stock:asc,createdAt:desc
+
+# Solo nombre (compatible con anterior)
+GET http://localhost:5263/api/products?sortBy=name
+```
+
+**Campos soportados:** `name`, `price`, `stock`, `createdAt`, `updatedAt`
+
+**Direcciones:** `asc` / `desc` (default: asc)
+
+#### Validaciones
+- `CreatedAtFrom` ≤ `CreatedAtTo` (400 si inválido)
+- `UpdatedAtFrom` ≤ `UpdatedAtTo` (400 si inválido)
+
+#### Implementación técnica
+- Conversión automática a UTC para PostgreSQL (`timestamp with time zone`)
+- Helper `ApplyMultiSort()` con `OrderBy` + `ThenBy` encadenados
+- Validación en `ProductFilterValidator` (FluentValidation)
+
+***
 
 ### Próximos pasos (Fase 4)
 

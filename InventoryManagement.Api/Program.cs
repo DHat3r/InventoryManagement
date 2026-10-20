@@ -146,6 +146,54 @@ static IResult ValidationProblem(FluentValidation.Results.ValidationResult resul
 static ApiResponse<T> OkResponse<T>(T data, string? message = null, object? meta = null)
     => ApiResponse<T>.Ok(data, message, meta);
 
+/// <summary>
+/// Aplica ordenamiento multi-campo: "price:desc,name:asc,stock"
+/// </summary>
+static IQueryable<Product> ApplyMultiSort(IQueryable<Product> query, string? sortBy, bool sortDesc)
+{
+    if (string.IsNullOrWhiteSpace(sortBy))
+        return sortDesc ? query.OrderByDescending(p => p.Name) : query.OrderBy(p => p.Name);
+
+    var sorts = sortBy.Split(',', StringSplitOptions.RemoveEmptyEntries);
+    IOrderedQueryable<Product>? ordered = null;
+
+    foreach (var sort in sorts)
+    {
+        var parts = sort.Split(':', StringSplitOptions.RemoveEmptyEntries);
+        var field = parts[0].Trim().ToLower();
+        var direction = parts.Length > 1 ? parts[1].Trim().ToLower() : (sortDesc ? "desc" : "asc");
+        var descending = direction == "desc";
+
+        var isFirst = ordered == null;
+        ordered = (field, descending, isFirst) switch
+        {
+            ("price", true, true) => query.OrderByDescending(p => p.Price),
+            ("price", false, true) => query.OrderBy(p => p.Price),
+            ("stock", true, true) => query.OrderByDescending(p => p.StockQuantity),
+            ("stock", false, true) => query.OrderBy(p => p.StockQuantity),
+            ("createdat", true, true) => query.OrderByDescending(p => p.CreatedAt),
+            ("createdat", false, true) => query.OrderBy(p => p.CreatedAt),
+            ("updatedat", true, true) => query.OrderByDescending(p => p.UpdatedAt),
+            ("updatedat", false, true) => query.OrderBy(p => p.UpdatedAt),
+            ("name", true, true) => query.OrderByDescending(p => p.Name),
+            ("name", false, true) => query.OrderBy(p => p.Name),
+            ("price", true, false) => ordered!.ThenByDescending(p => p.Price),
+            ("price", false, false) => ordered!.ThenBy(p => p.Price),
+            ("stock", true, false) => ordered!.ThenByDescending(p => p.StockQuantity),
+            ("stock", false, false) => ordered!.ThenBy(p => p.StockQuantity),
+            ("createdat", true, false) => ordered!.ThenByDescending(p => p.CreatedAt),
+            ("createdat", false, false) => ordered!.ThenBy(p => p.CreatedAt),
+            ("updatedat", true, false) => ordered!.ThenByDescending(p => p.UpdatedAt),
+            ("updatedat", false, false) => ordered!.ThenBy(p => p.UpdatedAt),
+            ("name", true, false) => ordered!.ThenByDescending(p => p.Name),
+            ("name", false, false) => ordered!.ThenBy(p => p.Name),
+            _ => isFirst ? (descending ? query.OrderByDescending(p => p.Name) : query.OrderBy(p => p.Name)) : ordered!
+        };
+    }
+
+    return ordered ?? (sortDesc ? query.OrderByDescending(p => p.Name) : query.OrderBy(p => p.Name));
+}
+
 // ============================================================
 // CATEGORIES
 // ============================================================
@@ -234,6 +282,39 @@ categories.MapDelete("/{id:int}", async (int id, InventoryDbContext db) =>
 .WithOpenApi();
 
 
+// GET tree (jerarquía de categorías)
+categories.MapGet("/tree", async (InventoryDbContext db) =>
+{
+    // Cargar todas las categorías activas
+    var allCategories = await db.Categories
+        .Where(c => c.IsActive)
+        .OrderBy(c => c.Name)
+        .ProjectToType<CategoryTreeDto>()
+        .ToListAsync();
+
+    // Construir árbol manualmente (evita recursión de Mapster)
+    var lookup = allCategories.ToDictionary(c => c.Id);
+    var roots = new List<CategoryTreeDto>();
+
+    foreach (var cat in allCategories)
+    {
+        if (cat.ParentCategoryId.HasValue && lookup.TryGetValue(cat.ParentCategoryId.Value, out var parent))
+        {
+            parent.Children.Add(cat);
+        }
+        else
+        {
+            roots.Add(cat);
+        }
+    }
+
+    return Results.Ok(OkResponse(roots));
+})
+.RequireAuthorization("RequireInventarioOrAdmin")
+.WithName("GetCategoriesTree")
+.WithOpenApi();
+
+
 // ============================================================
 // PRODUCTS
 // ============================================================
@@ -268,17 +349,41 @@ products.MapGet("/", async (
     if (filter.LowStockOnly == true)
         query = query.Where(p => p.IsActive && p.StockQuantity <= p.MinStockLevel);
 
-    // Ordenamiento dinámico
-    query = (filter.SortBy?.ToLower(), filter.SortDesc) switch
+    // Filtros por rango de fechas (convertir a UTC para PostgreSQL)
+    if (filter.CreatedAtFrom.HasValue)
     {
-        ("price", false) => query.OrderBy(p => p.Price),
-        ("price", true) => query.OrderByDescending(p => p.Price),
-        ("stock", false) => query.OrderBy(p => p.StockQuantity),
-        ("stock", true) => query.OrderByDescending(p => p.StockQuantity),
-        ("createdat", false) => query.OrderBy(p => p.CreatedAt),
-        ("createdat", true) => query.OrderByDescending(p => p.CreatedAt),
-        _ => query.OrderBy(p => p.Name)
-    };
+        var utc = filter.CreatedAtFrom.Value.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(filter.CreatedAtFrom.Value, DateTimeKind.Utc)
+            : filter.CreatedAtFrom.Value.ToUniversalTime();
+        query = query.Where(p => p.CreatedAt >= utc);
+    }
+
+    if (filter.CreatedAtTo.HasValue)
+    {
+        var utc = filter.CreatedAtTo.Value.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(filter.CreatedAtTo.Value, DateTimeKind.Utc)
+            : filter.CreatedAtTo.Value.ToUniversalTime();
+        query = query.Where(p => p.CreatedAt <= utc);
+    }
+
+    if (filter.UpdatedAtFrom.HasValue)
+    {
+        var utc = filter.UpdatedAtFrom.Value.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(filter.UpdatedAtFrom.Value, DateTimeKind.Utc)
+            : filter.UpdatedAtFrom.Value.ToUniversalTime();
+        query = query.Where(p => p.UpdatedAt >= utc);
+    }
+
+    if (filter.UpdatedAtTo.HasValue)
+    {
+        var utc = filter.UpdatedAtTo.Value.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(filter.UpdatedAtTo.Value, DateTimeKind.Utc)
+            : filter.UpdatedAtTo.Value.ToUniversalTime();
+        query = query.Where(p => p.UpdatedAt <= utc);
+    }
+
+    // Ordenamiento dinámico multi-campo
+    query = ApplyMultiSort(query, filter.SortBy, filter.SortDesc);
 
     var total = await query.CountAsync();
     var items = await query

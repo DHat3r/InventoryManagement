@@ -25,8 +25,17 @@ public class Category
     public int? CreatedBy { get; set; }
     public int? ModifiedBy { get; set; }
 
+    // Jerarquía de categorías (Fase 3.2)
+    public int? ParentCategoryId { get; set; }
+
     // Navigation properties
     public virtual ICollection<Product> Products { get; set; } = new List<Product>();
+
+    // Jerarquía navigation
+    [ForeignKey(nameof(ParentCategoryId))]
+    public virtual Category? ParentCategory { get; set; }
+
+    public virtual ICollection<Category> ChildCategories { get; set; } = new List<Category>();
 
     // Audit navigation
     [ForeignKey(nameof(CreatedBy))]
