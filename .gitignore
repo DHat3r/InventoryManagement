@@ -26,3 +26,7 @@ Thumbs.db
 !.env.example
 opencode.json
 .env
+HANDOFF.md
+PRUEBA_SUB_AGENTICA.md
+BACKEND_TODO.md
+EF_CORE_IMPLEMENTATION.md
