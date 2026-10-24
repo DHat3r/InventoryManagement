@@ -13,19 +13,16 @@ obj/
 # Environment / secrets
 .env
 .env.*
+!.env.example
 
 # OS files
 .DS_Store
 Thumbs.db
-
+opencode.json
 # Logs
 *.log
-# Environment / secrets
-.env
-.env.*
-!.env.example
-opencode.json
-.env
+
+# Project-specific markdown files
 HANDOFF.md
 PRUEBA_SUB_AGENTICA.md
 BACKEND_TODO.md
