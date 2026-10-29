@@ -33,6 +33,7 @@ La documentación completa, con ejemplos, está en Swagger.
 | Capa | Tecnología |
 |------|------------|
 | Backend | C# · ASP.NET Core 8 (Minimal APIs) |
+| Frontend | React 19 · TypeScript · Vite · React Router |
 | Base de datos | PostgreSQL 16 · Entity Framework Core 8 |
 | Validación y mapeo | FluentValidation · Mapster |
 | Seguridad | JWT Bearer · BCrypt · rate limiting nativo de .NET |
@@ -73,6 +74,20 @@ La API queda en `http://localhost:5263` y el usuario administrador se crea con l
 
 > Antes de usarlo fuera de tu máquina, cambia `JWT_SECRET`, `POSTGRES_PASSWORD` y `ADMIN_PASSWORD` en `.env`.
 
+### Frontend (panel web)
+
+Con la API corriendo en `http://localhost:5263` (opción A o B), en otra terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+El panel queda en `http://localhost:5173`: login, listado de productos con búsqueda y filtro de stock bajo, y kardex de cada producto con registro de movimientos. En desarrollo, Vite reenvía las peticiones `/api` a la API (proxy), así que no hace falta configurar CORS.
+
+> Vite no funciona si la ruta de la carpeta contiene `#` (por ejemplo `c#/`). En ese caso usa `npm run build` y `npm run preview` (puerto 4173), o clona el repo en una ruta sin `#`.
+
 ## Tests
 
 ```bash
@@ -87,7 +102,7 @@ Requiere Docker en ejecución. Hay 35 tests:
 
 ## Arquitectura
 
-La API es el único punto de acceso a los datos: cualquier cliente (un frontend, Swagger o Postman) se comunica con ella por HTTP, y ella es la única que habla con la base de datos.
+La API es el único punto de acceso a los datos: cualquier cliente (el panel React de `frontend/`, Swagger o Postman) se comunica con ella por HTTP, y ella es la única que habla con la base de datos.
 
 ```mermaid
 flowchart LR
@@ -128,7 +143,9 @@ En desarrollo, PostgreSQL corre en Docker y la API con `dotnet run`; con `docker
 - **Migraciones en producción:** hoy solo se aplican solas en Development; falta un paso de migración explícito para el despliegue.
 - **Secretos sin valores por defecto** en `docker-compose.yml`, para que la API no arranque con un `JWT_SECRET` conocido.
 - **Más tests:** servicios (auth, movimientos) y endpoints de usuarios.
-- **Siguiente etapa:** caché con Redis, módulos de proveedores y pedidos, panel en React y despliegue público con Swagger visible.
+- **Mensajes de validación de movimientos:** las reglas de negocio del validador responden con un mensaje genérico ("Validación de negocio fallida") en vez del motivo concreto, como stock insuficiente.
+- **Frontend:** contenedor propio (nginx) en `docker-compose`, tests de componentes y pantallas de categorías y usuarios.
+- **Siguiente etapa:** caché con Redis, módulos de proveedores y pedidos y despliegue público con Swagger visible.
 
 ## Autor
 
