@@ -66,15 +66,13 @@ Swagger queda en `http://localhost:5263/swagger`. Al arrancar en modo Developmen
 
 ### Opción B: todo en Docker
 
-En `.env`, cambia `ASPNETCORE_ENVIRONMENT` a `Development` (en `Production` Swagger está desactivado y las migraciones no se aplican solas). Luego:
-
 ```bash
 docker compose --profile api up -d --build
 ```
 
-La API queda en `http://localhost:5263` y el usuario administrador se crea con las variables `ADMIN_*` de `.env`.
+La API queda en `http://localhost:5263`. Al arrancar aplica las migraciones (`DATABASE_MIGRATE_ON_STARTUP=true` en `.env`) y crea el usuario administrador con las variables `ADMIN_*`. Con el `ASPNETCORE_ENVIRONMENT=Production` por defecto, Swagger está desactivado; para verlo, cámbialo a `Development` en `.env`.
 
-> Antes de usarlo fuera de tu máquina, cambia `JWT_SECRET`, `POSTGRES_PASSWORD` y `ADMIN_PASSWORD` en `.env`.
+> `POSTGRES_PASSWORD`, `JWT_SECRET` y `ADMIN_PASSWORD` son obligatorios: si faltan en `.env`, `docker compose` se detiene con un error. Los valores de `.env.example` son solo para desarrollo; cámbialos en cualquier otro entorno.
 
 ### Frontend (panel web)
 
@@ -97,10 +95,10 @@ cd InventoryManagement.Tests
 dotnet test
 ```
 
-Requiere Docker en ejecución. Hay 35 tests:
+Requiere Docker en ejecución. Hay 36 tests:
 
 - **15 unitarios** de los validadores (FluentValidation sobre EF Core InMemory).
-- **20 de integración** que levantan la API completa contra un PostgreSQL real en un contenedor (Testcontainers): auth, categorías, productos y movimientos de stock.
+- **21 de integración** que levantan la API completa contra un PostgreSQL real en un contenedor (Testcontainers): auth, categorías, productos y movimientos de stock.
 
 ### Integración continua
 
@@ -148,10 +146,8 @@ En desarrollo, PostgreSQL corre en Docker y la API con `dotnet run`; con `docker
 ## Qué mejoraría con más tiempo
 
 - **Separar `Program.cs`** (más de 1000 líneas) en un archivo de endpoints por módulo.
-- **Migraciones en producción:** hoy solo se aplican solas en Development; falta un paso de migración explícito para el despliegue.
-- **Secretos sin valores por defecto** en `docker-compose.yml`, para que la API no arranque con un `JWT_SECRET` conocido.
+- **Migraciones en un despliegue real:** hoy la API migra al arrancar, lo que basta para una instancia. Con varias instancias conviene un paso de migración aparte (por ejemplo, un migration bundle en el pipeline).
 - **Más tests:** servicios (auth, movimientos) y endpoints de usuarios.
-- **Mensajes de validación de movimientos:** las reglas de negocio del validador responden con un mensaje genérico ("Validación de negocio fallida") en vez del motivo concreto, como stock insuficiente.
 - **Frontend:** contenedor propio (nginx) en `docker-compose`, tests de componentes y pantallas de categorías y usuarios.
 - **Siguiente etapa:** caché con Redis, módulos de proveedores y pedidos y despliegue público con Swagger visible.
 
