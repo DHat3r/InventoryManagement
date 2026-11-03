@@ -284,6 +284,7 @@ if (app.Configuration.GetValue<bool>("AdminSeed:RunOnStartup", true))
 app.MapCategoryEndpoints();
 app.MapProductEndpoints();
 app.MapProductWorkflowEndpoints();
+app.MapChangeRequestEndpoints();
 app.MapKardexEndpoints();
 app.MapAuthEndpoints();
 app.MapUserEndpoints();
