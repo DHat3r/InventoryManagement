@@ -22,6 +22,12 @@ jobs:
       - name: Compilar
         run: dotnet build InventoryManagement.sln --no-restore -c Release
 
+      # Falla si alguien cambió las entidades y olvidó crear la migración.
+      - name: Chequear migraciones pendientes
+        run: |
+          dotnet tool install -g dotnet-ef --version 8.0.10
+          dotnet ef migrations has-pending-model-changes --project InventoryManagement.Api --no-build --configuration Release
+
       # Los tests de integración levantan PostgreSQL con Testcontainers;
       # los runners de GitHub ya traen Docker.
       - name: Tests
