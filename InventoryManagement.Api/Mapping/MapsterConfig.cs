@@ -39,9 +39,9 @@ public static class MapsterConfig
             .Map(dest => dest.CreatedAt, _ => DateTime.UtcNow)
             .Map(dest => dest.IsActive, _ => true)
             .Ignore(dest => dest.Id)
-            .Ignore(dest => dest.UpdatedAt)
+            .Ignore(dest => dest.UpdatedAt!)
             .Ignore(dest => dest.Products)
-            .Ignore(dest => dest.ParentCategory)
+            .Ignore(dest => dest.ParentCategory!)
             .Ignore(dest => dest.ChildCategories);
 
         // UpdateCategoryDto -> Category (para actualización parcial)
@@ -51,7 +51,7 @@ public static class MapsterConfig
             .Ignore(dest => dest.Id)
             .Ignore(dest => dest.CreatedAt)
             .Ignore(dest => dest.Products)
-            .Ignore(dest => dest.ParentCategory)
+            .Ignore(dest => dest.ParentCategory!)
             .Ignore(dest => dest.ChildCategories);
 
         // Product -> ProductDto (completo)
@@ -82,7 +82,7 @@ public static class MapsterConfig
             .Map(dest => dest.MinStockLevel, src => src.MinStockLevel)
             .Map(dest => dest.UnitOfMeasure, src => src.UnitOfMeasure)
             .Ignore(dest => dest.Id)
-            .Ignore(dest => dest.UpdatedAt)
+            .Ignore(dest => dest.UpdatedAt!)
             .Ignore(dest => dest.Category);
 
         // UpdateProductDto -> Product (auto-mapping + explicit)
@@ -105,12 +105,12 @@ public static class MapsterConfig
             .Map(dest => dest.UpdatedAt, _ => DateTime.UtcNow)
             .Ignore(dest => dest.Id)
             .Ignore(dest => dest.Name)
-            .Ignore(dest => dest.SKU)
-            .Ignore(dest => dest.Description)
+            .Ignore(dest => dest.SKU!)
+            .Ignore(dest => dest.Description!)
             .Ignore(dest => dest.Price)
             .Ignore(dest => dest.Cost)
             .Ignore(dest => dest.MinStockLevel)
-            .Ignore(dest => dest.UnitOfMeasure)
+            .Ignore(dest => dest.UnitOfMeasure!)
             .Ignore(dest => dest.IsActive)
             .Ignore(dest => dest.CategoryId)
             .Ignore(dest => dest.CreatedAt)
@@ -152,7 +152,7 @@ public static class MapsterConfig
             .Map(dest => dest.PasswordHash, src => src.Password) // Se hashea en el servicio
             .Map(dest => dest.Rut, src => NormalizeRut(src.Rut))
             .Ignore(dest => dest.Id)
-            .Ignore(dest => dest.UpdatedAt)
+            .Ignore(dest => dest.UpdatedAt!)
             .Ignore(dest => dest.RefreshTokens)
             .Ignore(dest => dest.StockMovements)
             .Ignore(dest => dest.CategoriesCreated)
