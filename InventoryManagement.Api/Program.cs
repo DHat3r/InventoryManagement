@@ -102,30 +102,36 @@ builder.Services.AddHealthChecks()
     .AddCheck("self", () => HealthCheckResult.Healthy(), tags: new[] { "live" });
 
 // ─── Rate Limiting ───
+// Cada IP tiene su propio cupo. Con una clave fija, el cupo era compartido por todos:
+// 10 logins fallidos de una persona bloqueaban el login de toda la empresa.
+// Los límites se pueden cambiar con RateLimiting:*PermitLimit (los tests los suben).
+var rateLimits = builder.Configuration.GetSection("RateLimiting");
+static string ClientIp(HttpContext ctx) => ctx.Connection.RemoteIpAddress?.ToString() ?? "desconocida";
+
 builder.Services.AddRateLimiter(options =>
 {
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
-        RateLimitPartition.GetFixedWindowLimiter("global", _ => new FixedWindowRateLimiterOptions
+        RateLimitPartition.GetFixedWindowLimiter(ClientIp(ctx), _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = 200,
+            PermitLimit = rateLimits.GetValue("GlobalPermitLimit", 200),
             Window = TimeSpan.FromMinutes(1),
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
             QueueLimit = 10
         }));
 
     options.AddPolicy("auth", ctx =>
-        RateLimitPartition.GetFixedWindowLimiter("auth", _ => new FixedWindowRateLimiterOptions
+        RateLimitPartition.GetFixedWindowLimiter(ClientIp(ctx), _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = 10,
+            PermitLimit = rateLimits.GetValue("AuthPermitLimit", 10),
             Window = TimeSpan.FromMinutes(1),
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
             QueueLimit = 5
         }));
 
     options.AddPolicy("api", ctx =>
-        RateLimitPartition.GetFixedWindowLimiter("api", _ => new FixedWindowRateLimiterOptions
+        RateLimitPartition.GetFixedWindowLimiter(ClientIp(ctx), _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = 100,
+            PermitLimit = rateLimits.GetValue("ApiPermitLimit", 100),
             Window = TimeSpan.FromMinutes(1),
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
             QueueLimit = 20

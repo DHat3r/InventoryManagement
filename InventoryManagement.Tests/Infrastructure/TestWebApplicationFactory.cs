@@ -36,6 +36,12 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
     {
         builder.UseEnvironment("Testing");
 
+        // En TestServer todas las peticiones vienen de la misma "IP": con los límites reales,
+        // los tests de permisos (varios logins por test) esperaban en la cola del rate limiter.
+        builder.UseSetting("RateLimiting:GlobalPermitLimit", "10000");
+        builder.UseSetting("RateLimiting:AuthPermitLimit", "10000");
+        builder.UseSetting("RateLimiting:ApiPermitLimit", "10000");
+
         builder.ConfigureServices(services =>
         {
             // Remove the DbContext registrations pointing to the real PostgreSQL instance
