@@ -19,20 +19,21 @@
 
 ### Permisos por rol
 
-Los valores (costos, valor del stock) son información contable: Inventario trabaja con cantidades y Contador con valores.
+Se separan dos tipos de dinero: el **valor de ingreso** (costo de compra), que Inventario necesita para revisar lo que recibe, y el **valor de venta** (precio y margen), que es información comercial. Inventario no ve el segundo, para evitar fugas de datos y que se confunda con el costo.
 
 | Acción | Admin | Inventario | Contador | Comprador |
 |--------|:-----:|:----------:|:--------:|:---------:|
-| Ver productos y stock bajo | ✅ | ✅ | ✅ | — |
+| Ver productos, stock y costo | ✅ | ✅ | ✅ | — |
+| Ver precio de venta y margen (y filtrar u ordenar por precio) | ✅ | — | ✅ | — |
 | Crear y editar productos y categorías | ✅ | ✅ | — | — |
 | Eliminar productos y categorías | ✅ | — | — | — |
 | Registrar entradas | ✅ | ✅ | — | ✅ |
 | Registrar salidas y ajustes | ✅ | ✅ | — | — |
-| Ver kardex (historial de movimientos) | ✅ | ✅ sin costos | ✅ | — |
+| Ver kardex (historial con costo unitario) | ✅ | ✅ | ✅ | — |
 | Ver kardex valorizado (resumen) | ✅ | — | ✅ | — |
 | Administrar usuarios | ✅ | — | — | — |
 
-Las reglas se aplican en la API; el panel web solo oculta lo que cada rol no puede usar.
+Las reglas se aplican en la API (por ejemplo, el precio llega en `null` a Inventario); el panel web solo oculta lo que cada rol no puede usar.
 
 ### Endpoints principales
 
@@ -112,10 +113,10 @@ cd InventoryManagement.Tests
 dotnet test
 ```
 
-Requiere Docker en ejecución. Hay 44 tests:
+Requiere Docker en ejecución. Hay 51 tests:
 
 - **15 unitarios** de los validadores (FluentValidation sobre EF Core InMemory).
-- **29 de integración** que levantan la API completa contra un PostgreSQL real en un contenedor (Testcontainers): auth, categorías, productos, movimientos de stock y permisos por rol (Inventario y Contador).
+- **36 de integración** que levantan la API completa contra un PostgreSQL real en un contenedor (Testcontainers): auth, categorías, productos, movimientos de stock y permisos por rol (Inventario y Contador).
 
 ### Integración continua
 
