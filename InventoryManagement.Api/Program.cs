@@ -22,6 +22,7 @@ using InventoryManagement.Api.Common.Exceptions;
 using InventoryManagement.Api.Middleware;
 using InventoryManagement.Api.Services;
 using HealthChecks.UI.Client;
+using static InventoryManagement.Api.Endpoints.EndpointHelpers;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -278,12 +279,6 @@ if (app.Configuration.GetValue<bool>("AdminSeed:RunOnStartup", true))
 }
 
 // ─── Helpers ───
-static IResult ValidationProblem(FluentValidation.Results.ValidationResult result)
-    => Results.ValidationProblem(result.ToDictionary());
-
-static ApiResponse<T> OkResponse<T>(T data, string? message = null, object? meta = null)
-    => ApiResponse<T>.Ok(data, message, meta);
-
 // Aplica ordenamiento multi-campo: "price:desc,name:asc,stock"
 static IQueryable<Product> ApplyMultiSort(IQueryable<Product> query, string? sortBy, bool sortDesc)
 {
