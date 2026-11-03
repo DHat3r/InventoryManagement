@@ -51,6 +51,29 @@ public class StockMovementsIntegrationTests : IntegrationTestBase
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("Stock insuficiente");
+    }
+
+    [Fact]
+    public async Task CreateMovement_Entrada_WithoutUnitCost_ReturnsSpecificMessage()
+    {
+        // Arrange
+        var dto = new CreateStockMovementDto(
+            Type: MovementType.Entrada,
+            Quantity: 5,
+            Reason: "Test Entrada sin costo",
+            Reference: "TEST-002",
+            UnitCost: null
+        );
+
+        // Act
+        var response = await Client.PostAsJsonAsync("/api/products/1/movements", dto);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("costo unitario es obligatorio");
     }
 
     [Fact]

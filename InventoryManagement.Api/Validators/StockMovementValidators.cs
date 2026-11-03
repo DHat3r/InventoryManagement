@@ -35,9 +35,12 @@ public class CreateStockMovementValidator : AbstractValidator<CreateStockMovemen
             .GreaterThanOrEqualTo(0).WithMessage("El costo unitario no puede ser negativo")
             .When(x => x.UnitCost.HasValue);
 
-        // Validaciones de negocio según tipo
-        RuleFor(x => x)
-            .MustAsync(ValidateBusinessRules).WithMessage("Validación de negocio fallida");
+        // Validaciones de negocio según tipo: cada regla informa su propio motivo
+        RuleFor(x => x).CustomAsync(async (dto, context, ct) =>
+        {
+            var error = await FindBusinessRuleError(dto, ct);
+            if (error is not null) context.AddFailure(error.Value.Property, error.Value.Message);
+        });
     }
 
     public CreateStockMovementValidator SetProductId(int productId)
@@ -46,52 +49,52 @@ public class CreateStockMovementValidator : AbstractValidator<CreateStockMovemen
         return this;
     }
 
-    private async Task<bool> ValidateBusinessRules(CreateStockMovementDto dto, CancellationToken ct)
+    // Devuelve null si el movimiento es válido, o el campo y el motivo del rechazo
+    private async Task<(string Property, string Message)?> FindBusinessRuleError(CreateStockMovementDto dto, CancellationToken ct)
     {
-        if (_productId <= 0) return false;
+        if (_productId <= 0) return ("", "Producto no válido");
 
         var product = await _db.Products
             .Where(p => p.Id == _productId && p.IsActive)
             .FirstOrDefaultAsync(ct);
 
-        if (product is null) return false;
+        if (product is null) return ("", "El producto no existe o está inactivo");
 
         return dto.Type switch
         {
-            MovementType.Entrada => ValidateEntrada(dto, product),
+            MovementType.Entrada => ValidateEntrada(dto),
             MovementType.Salida => ValidateSalida(dto, product),
             MovementType.Ajuste => ValidateAjuste(dto, product),
-            _ => false
+            _ => (nameof(dto.Type), "Tipo de movimiento inválido")
         };
     }
 
-    private bool ValidateEntrada(CreateStockMovementDto dto, Product product)
+    private static (string, string)? ValidateEntrada(CreateStockMovementDto dto)
     {
-        // Entrada: Quantity > 0, UnitCost requerido (para valoración)
-        if (!dto.UnitCost.HasValue) return false;
-        return true;
+        // Entrada: UnitCost requerido (para valoración)
+        return dto.UnitCost.HasValue
+            ? null
+            : (nameof(dto.UnitCost), "El costo unitario es obligatorio para una entrada");
     }
 
-    private bool ValidateSalida(CreateStockMovementDto dto, Product product)
+    private static (string, string)? ValidateSalida(CreateStockMovementDto dto, Product product)
     {
-        // Salida: Quantity > 0, stock suficiente
-        if (product.StockQuantity < dto.Quantity) return false;
-        // UnitCost opcional para salida (se usa costo promedio actual)
-        return true;
+        // Salida: stock suficiente. UnitCost opcional (se usa el costo del producto)
+        return product.StockQuantity < dto.Quantity
+            ? (nameof(dto.Quantity), $"Stock insuficiente. Disponible: {product.StockQuantity}, solicitado: {dto.Quantity}")
+            : null;
     }
 
-    private bool ValidateAjuste(CreateStockMovementDto dto, Product product)
+    private static (string, string)? ValidateAjuste(CreateStockMovementDto dto, Product product)
     {
-        // Ajuste: Quantity > 0, stock final no negativo
-        // Para ajustes, Quantity puede representar aumento o disminución
-        // Usamos UnitCost para saber dirección: si tiene UnitCost = entrada, si no = salida
-        // Pero mejor: validamos que stock final >= 0
+        // Ajuste: con UnitCost suma stock, sin UnitCost resta. El stock final no puede ser negativo.
         var newStock = dto.UnitCost.HasValue
-            ? product.StockQuantity + dto.Quantity  // Ajuste positivo (tiene costo = entrada)
-            : product.StockQuantity - dto.Quantity; // Ajuste negativo (sin costo = salida)
+            ? product.StockQuantity + dto.Quantity
+            : product.StockQuantity - dto.Quantity;
 
-        if (newStock < 0) return false;
-        return true;
+        return newStock < 0
+            ? (nameof(dto.Quantity), $"Stock insuficiente para el ajuste. Disponible: {product.StockQuantity}")
+            : null;
     }
 }
 
