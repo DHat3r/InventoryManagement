@@ -283,6 +283,7 @@ if (app.Configuration.GetValue<bool>("AdminSeed:RunOnStartup", true))
 // ─── Endpoints por módulo (ver carpeta Endpoints/) ───
 app.MapCategoryEndpoints();
 app.MapProductEndpoints();
+app.MapProductWorkflowEndpoints();
 app.MapKardexEndpoints();
 app.MapAuthEndpoints();
 app.MapUserEndpoints();
