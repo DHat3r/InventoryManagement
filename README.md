@@ -1,5 +1,7 @@
 # InventoryManagement
 
+[![CI](https://github.com/DHat3r/InventoryManagement/actions/workflows/ci.yml/badge.svg)](https://github.com/DHat3r/InventoryManagement/actions/workflows/ci.yml)
+
 > API REST de gestión de inventario para pymes: catálogo de productos, movimientos de stock con kardex valorizado y control de acceso según el rol de cada persona (Admin, Inventario, Contador, Comprador).
 
 ![Endpoints de la API en Swagger UI](docs/swagger.png)
@@ -100,6 +102,13 @@ Requiere Docker en ejecución. Hay 35 tests:
 - **15 unitarios** de los validadores (FluentValidation sobre EF Core InMemory).
 - **20 de integración** que levantan la API completa contra un PostgreSQL real en un contenedor (Testcontainers): auth, categorías, productos y movimientos de stock.
 
+### Integración continua
+
+Cada push a `main` y cada pull request corren [el workflow de CI](.github/workflows/ci.yml):
+
+- **Backend:** build, chequeo de migraciones pendientes (falla si un cambio en las entidades no tiene migración), tests y reporte de cobertura (69,7 % de líneas, sin contar migraciones). El resumen aparece en la página de cada ejecución y el reporte HTML queda como artifact.
+- **Frontend:** `npm ci`, lint y build.
+
 ## Arquitectura
 
 La API es el único punto de acceso a los datos: cualquier cliente (el panel React de `frontend/`, Swagger o Postman) se comunica con ella por HTTP, y ella es la única que habla con la base de datos.
@@ -138,7 +147,6 @@ En desarrollo, PostgreSQL corre en Docker y la API con `dotnet run`; con `docker
 
 ## Qué mejoraría con más tiempo
 
-- **CI con GitHub Actions:** build, tests y reporte de cobertura en cada pull request.
 - **Separar `Program.cs`** (más de 1000 líneas) en un archivo de endpoints por módulo.
 - **Migraciones en producción:** hoy solo se aplican solas en Development; falta un paso de migración explícito para el despliegue.
 - **Secretos sin valores por defecto** en `docker-compose.yml`, para que la API no arranque con un `JWT_SECRET` conocido.
