@@ -135,7 +135,7 @@ En desarrollo, PostgreSQL corre en Docker y la API con `dotnet run`; con `docker
 
 ## Decisiones técnicas
 
-- **Minimal APIs y no controladores:** menos código repetitivo y es el estilo moderno de .NET. La contra es que todo quedó en `Program.cs`, que hay que separar por módulos (ver abajo).
+- **Minimal APIs y no controladores:** menos código repetitivo y es el estilo moderno de .NET. Para que no crezca todo en `Program.cs`, cada módulo vive en `Endpoints/` (`CategoryEndpoints`, `ProductEndpoints`, `KardexEndpoints`, `AuthEndpoints`, `UserEndpoints`) como un método de extensión `app.MapXxxEndpoints()`; `Program.cs` queda solo con la configuración.
 - **JWT propio y no ASP.NET Identity:** el modelo de usuario necesita RUT y roles de negocio propios, e Identity trae muchas tablas y flujos que no se usan. Hacerlo a mano también deja claro cómo funciona cada paso.
 - **Refresh tokens guardados como hash (SHA-256):** si alguien leyera la base de datos, no podría usar los tokens. Cada refresh invalida el token anterior.
 - **Testcontainers y no InMemory para integración:** InMemory no se comporta como PostgreSQL (transacciones, índices únicos, claves foráneas). Probar contra la base real evita falsos positivos.
@@ -145,7 +145,6 @@ En desarrollo, PostgreSQL corre en Docker y la API con `dotnet run`; con `docker
 
 ## Qué mejoraría con más tiempo
 
-- **Separar `Program.cs`** (más de 1000 líneas) en un archivo de endpoints por módulo.
 - **Migraciones en un despliegue real:** hoy la API migra al arrancar, lo que basta para una instancia. Con varias instancias conviene un paso de migración aparte (por ejemplo, un migration bundle en el pipeline).
 - **Más tests:** servicios (auth, movimientos) y endpoints de usuarios.
 - **Frontend:** contenedor propio (nginx) en `docker-compose`, tests de componentes y pantallas de categorías y usuarios.
