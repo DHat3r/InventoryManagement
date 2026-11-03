@@ -9,7 +9,8 @@
 ## Funcionalidades
 
 - **Catálogo:** categorías jerárquicas (con vista de árbol) y productos, con búsqueda, filtros por precio y fecha, orden por varios campos y paginación.
-- **Stock y kardex:** entradas, salidas y ajustes; historial de movimientos por producto y resumen valorizado. No permite una salida mayor al stock disponible.
+- **Aprobación de productos:** Inventario propone altas, ediciones y retiros; Admin aprueba; el precio lo define Admin.
+- **Stock y kardex:** entradas, salidas y ajustes; historial de movimientos por producto y resumen valorizado. No permite una salida mayor al stock disponible. Las salidas se bloquean para productos no aprobados o retirados.
 - **Alertas:** listado de productos bajo su stock mínimo.
 - **Autenticación:** JWT con refresh tokens que rotan en cada uso y se pueden revocar (logout, cambio de contraseña).
 - **Roles y permisos:** 4 roles de negocio; cada endpoint exige el rol que corresponde.
@@ -25,8 +26,13 @@ Se separan dos tipos de dinero: el **valor de ingreso** (costo de compra), que I
 |--------|:-----:|:----------:|:--------:|:---------:|
 | Ver productos, stock y costo | ✅ | ✅ | ✅ | — |
 | Ver precio de venta y margen (y filtrar u ordenar por precio) | ✅ | — | ✅ | — |
-| Crear y editar productos y categorías | ✅ | ✅ | — | — |
-| Eliminar productos y categorías | ✅ | — | — | — |
+| Crear productos | ✅ con precio | ✅ queda pendiente | — | — |
+| Editar productos | ✅ | ✅ propone el cambio (si ya está aprobado) | — | — |
+| Crear y editar categorías | ✅ | ✅ | — | — |
+| Aprobar o rechazar productos y solicitudes | ✅ | — | — | — |
+| Retirar de la venta | ✅ directo | ✅ con aprobación | — | — |
+| Reactivar y descontinuar productos (`DELETE` descontinúa) | ✅ | — | — | — |
+| Eliminar categorías | ✅ | — | — | — |
 | Registrar entradas | ✅ | ✅ | — | ✅ |
 | Registrar salidas y ajustes | ✅ | ✅ | — | — |
 | Ver kardex (historial con costo unitario) | ✅ | ✅ | ✅ | — |
@@ -34,6 +40,35 @@ Se separan dos tipos de dinero: el **valor de ingreso** (costo de compra), que I
 | Administrar usuarios | ✅ | — | — | — |
 
 Las reglas se aplican en la API (por ejemplo, el precio llega en `null` a Inventario); el panel web solo oculta lo que cada rol no puede usar.
+
+### Estados de un producto
+
+Un producto tiene tres dimensiones independientes:
+
+| Dimensión | Valores | ¿Se guarda? | Quién la cambia |
+|-----------|---------|:-----------:|-----------------|
+| Aprobación | Pendiente, Aprobado, Rechazado | Sí | Inventario crea o corrige (vuelve a Pendiente); Admin aprueba o rechaza |
+| Vigencia | Activo, Retirado, Descontinuado | Sí (reemplaza a `IsActive`) | Admin retira, reactiva y descontinúa; Admin aprueba el retiro que pide Inventario |
+| Disponibilidad | Sin stock, Stock bajo | No, se calcula del stock | Los movimientos de stock |
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Pendiente: Inventario crea (sin precio)
+    [*] --> Aprobado: Admin crea (con precio)
+    Pendiente --> Aprobado: Admin aprueba y define el precio
+    Pendiente --> Rechazado: Admin rechaza
+    Rechazado --> Pendiente: Inventario corrige
+    state Aprobado {
+        direction LR
+        [*] --> Activo
+        Activo --> Retirado: Admin retira / aprueba el retiro
+        Retirado --> Activo: Admin reactiva
+        Activo --> Descontinuado: Admin descontinúa
+    }
+```
+
+Mientras Inventario espera la aprobación de un retiro, el producto se muestra *Posiblemente no disponible* y no admite salidas.
 
 ### Endpoints principales
 
@@ -43,6 +78,8 @@ Las reglas se aplican en la API (por ejemplo, el precio llega en `null` a Invent
 | Categorías | CRUD en `/api/categories` · `GET /api/categories/tree` |
 | Productos | CRUD en `/api/products` · `GET /low-stock` · `PATCH /{id}/stock` |
 | Kardex | `POST /api/products/{id}/movements` · `GET /{id}/kardex` · `GET /{id}/kardex/summary` |
+| Aprobación | `POST /{id}/approve` · `reject` · `withdraw` · `reactivate` |
+| Solicitudes | `GET /api/product-change-requests` · `POST /api/product-change-requests/{id}/approve` · `/reject` (solo Admin) |
 | Usuarios | CRUD en `/api/users` (solo Admin) |
 | Salud | `GET /health` · `/health/ready` · `/health/live` |
 
@@ -113,10 +150,10 @@ cd InventoryManagement.Tests
 dotnet test
 ```
 
-Requiere Docker en ejecución. Hay 51 tests:
+Requiere Docker en ejecución. Hay 73 tests:
 
 - **15 unitarios** de los validadores (FluentValidation sobre EF Core InMemory).
-- **36 de integración** que levantan la API completa contra un PostgreSQL real en un contenedor (Testcontainers): auth, categorías, productos, movimientos de stock y permisos por rol (Inventario y Contador).
+- **58 de integración** que levantan la API completa contra un PostgreSQL real en un contenedor (Testcontainers): auth, categorías, productos, movimientos de stock, permisos por rol (Inventario y Contador) y el flujo de aprobación, ediciones propuestas y retiros.
 
 ### Integración continua
 
@@ -160,6 +197,7 @@ En desarrollo, PostgreSQL corre en Docker y la API con `dotnet run`; con `docker
 - **Cantidad siempre positiva en los movimientos:** el tipo (entrada, salida, ajuste) define el signo, como en contabilidad. Así los reportes no dependen de interpretar números negativos.
 - **DTOs separados de las entidades:** la API no expone el modelo de la base, y cambiarlo no rompe a los clientes.
 - **Errores en formato ProblemDetails (RFC 7807):** todos los errores tienen la misma forma y un identificador de correlación, lo que facilita manejarlos en un frontend y rastrearlos en los logs.
+- **Estados separados y calculados:** aprobación, vigencia y disponibilidad son dimensiones distintas (un producto puede estar aprobado y sin stock a la vez); lo que se deriva de otros datos (sin stock, posiblemente no disponible) se calcula en la consulta en vez de guardarse, para que nunca quede desincronizado.
 
 ## Qué mejoraría con más tiempo
 
