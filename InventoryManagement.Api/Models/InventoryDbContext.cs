@@ -18,6 +18,7 @@ public class InventoryDbContext : DbContext
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
     public DbSet<User> Users => Set<User>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<ProductChangeRequest> ProductChangeRequests => Set<ProductChangeRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -61,13 +62,16 @@ public class InventoryDbContext : DbContext
             entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
             entity.Property(e => e.SKU).HasMaxLength(50);
             entity.Property(e => e.Description).HasMaxLength(1000);
-            entity.Property(e => e.Price).HasColumnType("decimal(18,2)").IsRequired();
+            entity.Property(e => e.Price).HasColumnType("decimal(18,2)"); // null hasta que Admin aprueba
             entity.Property(e => e.Cost).HasColumnType("decimal(18,2)").IsRequired();
             entity.Property(e => e.StockQuantity).HasDefaultValue(0);
             entity.Property(e => e.MinStockLevel).HasDefaultValue(10);
             entity.Property(e => e.UnitOfMeasure).HasMaxLength(50).HasDefaultValue("UN");
-            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.ApprovalStatus).HasConversion<byte>().IsRequired();
+            entity.Property(e => e.Lifecycle).HasConversion<byte>().IsRequired();
+            entity.Property(e => e.RejectionReason).HasMaxLength(500);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasIndex(e => e.ApprovalStatus);
             
             // Audit FKs (nullable, SET NULL)
             entity.HasOne(e => e.CreatedByUser)
@@ -140,6 +144,32 @@ public class InventoryDbContext : DbContext
             entity.HasIndex(e => new { e.Role, e.IsActive });
         });
 
+        // ProductChangeRequest configuration (ediciones y retiros que Admin aprueba)
+        modelBuilder.Entity<ProductChangeRequest>(entity =>
+        {
+            entity.ToTable("product_change_requests");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Type).HasConversion<byte>().IsRequired();
+            entity.Property(e => e.Status).HasConversion<byte>().IsRequired();
+            entity.Property(e => e.Name).HasMaxLength(200);
+            entity.Property(e => e.SKU).HasMaxLength(50);
+            entity.Property(e => e.Description).HasMaxLength(1000);
+            entity.Property(e => e.Cost).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.UnitOfMeasure).HasMaxLength(50);
+            entity.Property(e => e.Reason).HasMaxLength(500);
+            entity.Property(e => e.ReviewComment).HasMaxLength(500);
+            entity.Property(e => e.RequestedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            // Para listar pendientes y saber si un producto tiene un retiro en revisión
+            entity.HasIndex(e => new { e.ProductId, e.Type, e.Status });
+            entity.HasIndex(e => e.Status);
+
+            entity.HasOne(e => e.Product)
+                  .WithMany(p => p.ChangeRequests)
+                  .HasForeignKey(e => e.ProductId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
         // RefreshToken configuration
         modelBuilder.Entity<RefreshToken>(entity =>
         {
@@ -178,12 +208,12 @@ public class InventoryDbContext : DbContext
 
         // Seed Products
         modelBuilder.Entity<Product>().HasData(
-            new Product { Id = 1, Name = "Laptop Gaming", SKU = "LAP-GAM-001", Description = "Laptop para gaming de alto rendimiento", Price = 1299.99m, Cost = 950.00m, StockQuantity = 15, MinStockLevel = 5, UnitOfMeasure = "UN", CategoryId = 1, IsActive = true, CreatedAt = SeedDate },
-            new Product { Id = 2, Name = "Mouse Inalámbrico", SKU = "MOU-WLS-001", Description = "Mouse ergonómico inalámbrico", Price = 49.99m, Cost = 25.00m, StockQuantity = 50, MinStockLevel = 10, UnitOfMeasure = "UN", CategoryId = 1, IsActive = true, CreatedAt = SeedDate },
-            new Product { Id = 3, Name = "Teclado Mecánico", SKU = "KEY-MEC-001", Description = "Teclado mecánico RGB", Price = 89.99m, Cost = 45.00m, StockQuantity = 30, MinStockLevel = 8, UnitOfMeasure = "UN", CategoryId = 1, IsActive = true, CreatedAt = SeedDate },
-            new Product { Id = 4, Name = "Camiseta Deportiva", SKU = "TSH-SPT-001", Description = "Camiseta transpirable para deporte", Price = 24.99m, Cost = 12.00m, StockQuantity = 100, MinStockLevel = 20, UnitOfMeasure = "UN", CategoryId = 4, IsActive = true, CreatedAt = SeedDate },
-            new Product { Id = 5, Name = "Zapatillas Running", SKU = "SHO-RUN-001", Description = "Zapatillas para running profesionales", Price = 119.99m, Cost = 65.00m, StockQuantity = 25, MinStockLevel = 10, UnitOfMeasure = "PAR", CategoryId = 4, IsActive = true, CreatedAt = SeedDate },
-            new Product { Id = 6, Name = "Lámpara LED", SKU = "LAM-LED-001", Description = "Lámpara de escritorio LED regulable", Price = 34.99m, Cost = 18.00m, StockQuantity = 40, MinStockLevel = 10, UnitOfMeasure = "UN", CategoryId = 3, IsActive = true, CreatedAt = SeedDate }
+            new Product { Id = 1, Name = "Laptop Gaming", SKU = "LAP-GAM-001", Description = "Laptop para gaming de alto rendimiento", Price = 1299.99m, Cost = 950.00m, StockQuantity = 15, MinStockLevel = 5, UnitOfMeasure = "UN", CategoryId = 1, ApprovalStatus = ProductApprovalStatus.Aprobado, CreatedAt = SeedDate },
+            new Product { Id = 2, Name = "Mouse Inalámbrico", SKU = "MOU-WLS-001", Description = "Mouse ergonómico inalámbrico", Price = 49.99m, Cost = 25.00m, StockQuantity = 50, MinStockLevel = 10, UnitOfMeasure = "UN", CategoryId = 1, ApprovalStatus = ProductApprovalStatus.Aprobado, CreatedAt = SeedDate },
+            new Product { Id = 3, Name = "Teclado Mecánico", SKU = "KEY-MEC-001", Description = "Teclado mecánico RGB", Price = 89.99m, Cost = 45.00m, StockQuantity = 30, MinStockLevel = 8, UnitOfMeasure = "UN", CategoryId = 1, ApprovalStatus = ProductApprovalStatus.Aprobado, CreatedAt = SeedDate },
+            new Product { Id = 4, Name = "Camiseta Deportiva", SKU = "TSH-SPT-001", Description = "Camiseta transpirable para deporte", Price = 24.99m, Cost = 12.00m, StockQuantity = 100, MinStockLevel = 20, UnitOfMeasure = "UN", CategoryId = 4, ApprovalStatus = ProductApprovalStatus.Aprobado, CreatedAt = SeedDate },
+            new Product { Id = 5, Name = "Zapatillas Running", SKU = "SHO-RUN-001", Description = "Zapatillas para running profesionales", Price = 119.99m, Cost = 65.00m, StockQuantity = 25, MinStockLevel = 10, UnitOfMeasure = "PAR", CategoryId = 4, ApprovalStatus = ProductApprovalStatus.Aprobado, CreatedAt = SeedDate },
+            new Product { Id = 6, Name = "Lámpara LED", SKU = "LAM-LED-001", Description = "Lámpara de escritorio LED regulable", Price = 34.99m, Cost = 18.00m, StockQuantity = 40, MinStockLevel = 10, UnitOfMeasure = "UN", CategoryId = 3, ApprovalStatus = ProductApprovalStatus.Aprobado, CreatedAt = SeedDate }
         );
     }
 }

@@ -55,7 +55,7 @@ public class CreateStockMovementValidator : AbstractValidator<CreateStockMovemen
         if (_productId <= 0) return ("", "Producto no válido");
 
         var product = await _db.Products
-            .Where(p => p.Id == _productId && p.IsActive)
+            .Where(p => p.Id == _productId && p.Lifecycle != ProductLifecycle.Descontinuado)
             .FirstOrDefaultAsync(ct);
 
         if (product is null) return ("", "El producto no existe o está inactivo");

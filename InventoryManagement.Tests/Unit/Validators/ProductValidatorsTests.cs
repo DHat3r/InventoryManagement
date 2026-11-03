@@ -214,8 +214,7 @@ public class ProductValidatorsTests
             Description: "Laptop mejorada",
             StockQuantity: 20,
             MinStockLevel: 5,
-            UnitOfMeasure: "UN",
-            IsActive: true
+            UnitOfMeasure: "UN"
         );
 
         // Act

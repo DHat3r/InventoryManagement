@@ -61,21 +61,41 @@ public static class MapsterConfig
             .Map(dest => dest.SKU, src => src.SKU)
             .Map(dest => dest.Description, src => src.Description)
             .Map(dest => dest.IsLowStock, src => src.StockQuantity <= src.MinStockLevel)
+            // Disponibilidad y solicitudes pendientes se calculan, no se guardan (no pueden desincronizarse)
+            .Map(dest => dest.IsOutOfStock, src => src.StockQuantity == 0)
+            .Map(dest => dest.IsPossiblyUnavailable, src => src.ChangeRequests
+                .Any(r => r.Type == ChangeRequestType.Retiro && r.Status == ChangeRequestStatus.Pendiente))
+            .Map(dest => dest.HasPendingEdit, src => src.ChangeRequests
+                .Any(r => r.Type == ChangeRequestType.Edicion && r.Status == ChangeRequestStatus.Pendiente))
             .Map(dest => dest.MarginPercentage, src =>
-                src.Cost > 0 ? Math.Round(((src.Price - src.Cost) / src.Cost) * 100, 2) : 0);
+                src.Price.HasValue && src.Cost > 0
+                    ? Math.Round(((src.Price.Value - src.Cost) / src.Cost) * 100, 2)
+                    : (decimal?)null);
 
         // Product -> ProductListDto (ligero para listados)
         TypeAdapterConfig<Product, ProductListDto>
             .NewConfig()
             .Map(dest => dest.Category, src => MapCategoryRef(src.Category))
             .Map(dest => dest.SKU, src => src.SKU)
-            .Map(dest => dest.IsLowStock, src => src.StockQuantity <= src.MinStockLevel);
+            .Map(dest => dest.IsLowStock, src => src.StockQuantity <= src.MinStockLevel)
+            .Map(dest => dest.IsOutOfStock, src => src.StockQuantity == 0)
+            .Map(dest => dest.IsPossiblyUnavailable, src => src.ChangeRequests
+                .Any(r => r.Type == ChangeRequestType.Retiro && r.Status == ChangeRequestStatus.Pendiente))
+            .Map(dest => dest.HasPendingEdit, src => src.ChangeRequests
+                .Any(r => r.Type == ChangeRequestType.Edicion && r.Status == ChangeRequestStatus.Pendiente));
+
+        // ProductChangeRequest -> ProductChangeRequestDto (con los valores actuales para comparar)
+        TypeAdapterConfig<ProductChangeRequest, ProductChangeRequestDto>
+            .NewConfig()
+            .Map(dest => dest.ProductName, src => src.Product.Name)
+            .Map(dest => dest.Current, src => new ProductCurrentValuesDto(
+                src.Product.Name, src.Product.SKU, src.Product.Description, src.Product.Cost,
+                src.Product.CategoryId, src.Product.MinStockLevel, src.Product.UnitOfMeasure));
 
         // CreateProductDto -> Product (auto-mapping + explicit para SKU y otros)
         TypeAdapterConfig<CreateProductDto, Product>
             .NewConfig()
             .Map(dest => dest.CreatedAt, _ => DateTime.UtcNow)
-            .Map(dest => dest.IsActive, _ => true)
             .Map(dest => dest.SKU, src => src.SKU)
             .Map(dest => dest.Description, src => src.Description)
             .Map(dest => dest.StockQuantity, src => src.StockQuantity)
@@ -96,6 +116,7 @@ public static class MapsterConfig
             .Map(dest => dest.UnitOfMeasure, src => src.UnitOfMeasure)
             .Ignore(dest => dest.Id)
             .Ignore(dest => dest.CreatedAt)
+            .Ignore(nameof(Product.Price)) // null = "no cambiar": lo resuelve el endpoint
             .Ignore(dest => dest.Category);
 
         // UpdateStockDto -> Product (parcial)
@@ -107,11 +128,10 @@ public static class MapsterConfig
             .Ignore(dest => dest.Name)
             .Ignore(dest => dest.SKU!)
             .Ignore(dest => dest.Description!)
-            .Ignore(dest => dest.Price)
+            .Ignore(nameof(Product.Price))
             .Ignore(dest => dest.Cost)
             .Ignore(dest => dest.MinStockLevel)
             .Ignore(dest => dest.UnitOfMeasure!)
-            .Ignore(dest => dest.IsActive)
             .Ignore(dest => dest.CategoryId)
             .Ignore(dest => dest.CreatedAt)
             .Ignore(dest => dest.Category);

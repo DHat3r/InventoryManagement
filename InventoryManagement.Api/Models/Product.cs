@@ -18,9 +18,9 @@ public class Product
     [MaxLength(1000)]
     public string? Description { get; set; }
 
-    [Required]
+    /// <summary>Precio de venta. Null mientras el producto espera aprobación: lo define Admin al aprobar.</summary>
     [Column(TypeName = "decimal(18,2)")]
-    public decimal Price { get; set; }
+    public decimal? Price { get; set; }
 
     [Required]
     [Column(TypeName = "decimal(18,2)")]
@@ -34,7 +34,17 @@ public class Product
     [MaxLength(50)]
     public string? UnitOfMeasure { get; set; } = "UN";
 
-    public bool IsActive { get; set; } = true;
+    // Ver ProductStates.cs: aprobación y vigencia son dimensiones separadas.
+    // Por defecto Pendiente: quien crea un producto aprobado lo tiene que decir explícitamente.
+    public ProductApprovalStatus ApprovalStatus { get; set; } = ProductApprovalStatus.Pendiente;
+    public ProductLifecycle Lifecycle { get; set; } = ProductLifecycle.Activo;
+
+    // Auditoría de la aprobación
+    public int? ApprovedBy { get; set; }
+    public DateTime? ApprovedAt { get; set; }
+
+    [MaxLength(500)]
+    public string? RejectionReason { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
@@ -57,4 +67,6 @@ public class Product
 
     [ForeignKey(nameof(ModifiedBy))]
     public virtual User? ModifiedByUser { get; set; }
+
+    public virtual ICollection<ProductChangeRequest> ChangeRequests { get; set; } = new List<ProductChangeRequest>();
 }

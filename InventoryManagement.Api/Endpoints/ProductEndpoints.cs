@@ -41,8 +41,14 @@ public static class ProductEndpoints
             if (filter.CategoryId.HasValue)
                 query = query.Where(p => p.CategoryId == filter.CategoryId.Value);
 
-            if (filter.IsActive.HasValue)
-                query = query.Where(p => p.IsActive == filter.IsActive.Value);
+            if (filter.Lifecycle.HasValue)
+                query = query.Where(p => p.Lifecycle == filter.Lifecycle.Value);
+
+            if (filter.ApprovalStatus.HasValue)
+                query = query.Where(p => p.ApprovalStatus == filter.ApprovalStatus.Value);
+
+            if (filter.OutOfStockOnly == true)
+                query = query.Where(p => p.StockQuantity == 0);
 
             if (!string.IsNullOrWhiteSpace(filter.Search))
                 query = query.Where(p => p.Name.Contains(filter.Search!) || (p.SKU != null && p.SKU.Contains(filter.Search!)));
@@ -54,7 +60,7 @@ public static class ProductEndpoints
                 query = query.Where(p => p.Price <= filter.MaxPrice.Value);
 
             if (filter.LowStockOnly == true)
-                query = query.Where(p => p.IsActive && p.StockQuantity <= p.MinStockLevel);
+                query = query.Where(p => p.Lifecycle == ProductLifecycle.Activo && p.StockQuantity <= p.MinStockLevel);
 
             // Filtros por rango de fechas (convertir a UTC para PostgreSQL)
             if (filter.CreatedAtFrom.HasValue)
@@ -121,14 +127,7 @@ public static class ProductEndpoints
         // GET by ID (completo)
         products.MapGet("/{id:int}", async (int id, InventoryDbContext db, ICurrentUserService currentUser) =>
         {
-            var entity = await db.Products
-                .Include(p => p.Category)
-                .Where(p => p.Id == id)
-                .ProjectToType<ProductDto>()
-                .FirstOrDefaultAsync();
-            return entity is not null
-                ? Results.Ok(OkResponse(HideSalePriceIfNeeded(entity, currentUser)))
-                : throw new NotFoundException("Product", id);
+            return Results.Ok(OkResponse(await LoadProductDtoAsync(db, id, currentUser)));
         })
         .RequireAuthorization("RequireInventarioOrContadorOrAdmin")
         .WithName("GetProductById")
@@ -139,7 +138,7 @@ public static class ProductEndpoints
         {
             var list = await db.Products
                 .Include(p => p.Category)
-                .Where(p => p.IsActive && p.StockQuantity <= p.MinStockLevel)
+                .Where(p => p.Lifecycle == ProductLifecycle.Activo && p.StockQuantity <= p.MinStockLevel)
                 .OrderBy(p => p.StockQuantity)
                 .ProjectToType<ProductListDto>()
                 .ToListAsync();
@@ -155,18 +154,30 @@ public static class ProductEndpoints
             var validation = await validator.ValidateAsync(dto);
             if (!validation.IsValid) return ValidationProblem(validation);
 
+            // Admin crea con precio y queda aprobado. Inventario crea sin precio y queda
+            // pendiente: el precio lo define Admin al aprobar (Inventario no ve precios de venta).
+            var isAdmin = currentUser.IsInRole(UserRole.Admin);
+            if (isAdmin && !dto.Price.HasValue)
+                return PriceProblem("Al crear un producto como Admin hay que indicar el precio de venta");
+            if (!isAdmin && dto.Price.HasValue)
+                return PriceProblem("El precio de venta lo define Admin al aprobar el producto");
+
             var entity = dto.Adapt<Product>();
             entity.CreatedBy = currentUser.UserId;
+            entity.ApprovalStatus = isAdmin ? ProductApprovalStatus.Aprobado : ProductApprovalStatus.Pendiente;
+            if (isAdmin)
+            {
+                entity.ApprovedBy = currentUser.UserId;
+                entity.ApprovedAt = DateTime.UtcNow;
+            }
             db.Products.Add(entity);
             await db.SaveChangesAsync();
 
-            // Recargar con Category para el DTO de salida
-            await db.Entry(entity).Reference(p => p.Category).LoadAsync();
-            var result = HideSalePriceIfNeeded(entity.Adapt<ProductDto>(), currentUser);
-
-            return Results.Created($"/api/products/{entity.Id}", OkResponse(result, "Producto creado"));
+            var result = await LoadProductDtoAsync(db, entity.Id, currentUser);
+            var message = isAdmin ? "Producto creado" : "Producto creado, pendiente de aprobación de Admin";
+            return Results.Created($"/api/products/{entity.Id}", OkResponse(result, message));
         })
-        .RequireAuthorization("RequireInventarioOrAdmin") // Crear productos: Inventario, Admin
+        .RequireAuthorization("RequireInventarioOrAdmin") // Crear productos: Inventario (queda pendiente), Admin
         .WithName("CreateProduct")
         .WithOpenApi();
 
@@ -182,16 +193,56 @@ public static class ProductEndpoints
             var entity = await db.Products.FindAsync(id);
             if (entity is null) throw new NotFoundException("Product", id);
 
+            var isAdmin = currentUser.IsInRole(UserRole.Admin);
+            if (!isAdmin && dto.Price.HasValue)
+                return PriceProblem("El precio de venta solo lo cambia Admin");
+
+            // Inventario sobre un producto ya aprobado: no se aplica, queda como cambio propuesto
+            if (!isAdmin && entity.ApprovalStatus == ProductApprovalStatus.Aprobado)
+            {
+                var hasPendingEdit = await db.ProductChangeRequests.AnyAsync(r =>
+                    r.ProductId == id && r.Type == ChangeRequestType.Edicion && r.Status == ChangeRequestStatus.Pendiente);
+                if (hasPendingEdit)
+                    throw new BusinessRuleException("EDICION_PENDIENTE",
+                        "Este producto ya tiene una edición esperando aprobación de Admin");
+
+                var request = new ProductChangeRequest
+                {
+                    ProductId = id,
+                    Type = ChangeRequestType.Edicion,
+                    Name = dto.Name,
+                    SKU = dto.SKU,
+                    Description = dto.Description,
+                    Cost = dto.Cost,
+                    CategoryId = dto.CategoryId,
+                    MinStockLevel = dto.MinStockLevel,
+                    UnitOfMeasure = dto.UnitOfMeasure,
+                    RequestedBy = currentUser.UserId!.Value
+                };
+                db.ProductChangeRequests.Add(request);
+                await db.SaveChangesAsync();
+
+                var requestDto = await LoadChangeRequestDtoAsync(db, request.Id);
+                return Results.Accepted($"/api/product-change-requests/{request.Id}",
+                    OkResponse(requestDto, "Cambio enviado a Admin para aprobación"));
+            }
+
+            // Admin, o Inventario sobre su borrador (pendiente o rechazado): se aplica directo
             dto.Adapt(entity);
+            if (isAdmin && dto.Price.HasValue) entity.Price = dto.Price;
+            if (entity.ApprovalStatus == ProductApprovalStatus.Rechazado)
+            {
+                // Editar un producto rechazado lo vuelve a enviar a revisión
+                entity.ApprovalStatus = ProductApprovalStatus.Pendiente;
+                entity.RejectionReason = null;
+            }
             entity.ModifiedBy = currentUser.UserId;
             await db.SaveChangesAsync();
 
-            await db.Entry(entity).Reference(p => p.Category).LoadAsync();
-            var result = HideSalePriceIfNeeded(entity.Adapt<ProductDto>(), currentUser);
-
+            var result = await LoadProductDtoAsync(db, id, currentUser);
             return Results.Ok(OkResponse(result, "Producto actualizado"));
         })
-        .RequireAuthorization("RequireInventarioOrAdmin") // Actualizar productos: Inventario, Admin
+        .RequireAuthorization("RequireInventarioOrAdmin") // Actualizar: Admin directo; Inventario propone si ya está aprobado
         .WithName("UpdateProduct")
         .WithOpenApi();
 
@@ -208,7 +259,7 @@ public static class ProductEndpoints
             entity.ModifiedBy = currentUser.UserId;
             await db.SaveChangesAsync();
 
-            var result = HideSalePriceIfNeeded(entity.Adapt<ProductDto>(), currentUser);
+            var result = await LoadProductDtoAsync(db, id, currentUser);
             return Results.Ok(OkResponse(result, "Stock actualizado"));
         })
         .RequireAuthorization("RequireInventarioOrAdmin") // Actualizar stock: Inventario, Admin
@@ -221,7 +272,8 @@ public static class ProductEndpoints
             var entity = await db.Products.FindAsync(id);
             if (entity is null) throw new NotFoundException("Product", id);
 
-            entity.IsActive = false;
+            // Borrar = descontinuar (soft delete): el historial del kardex se conserva
+            entity.Lifecycle = ProductLifecycle.Descontinuado;
             entity.UpdatedAt = DateTime.UtcNow;
             entity.ModifiedBy = currentUser.UserId;
             await db.SaveChangesAsync();
@@ -231,6 +283,31 @@ public static class ProductEndpoints
         .WithName("DeleteProduct")
         .WithOpenApi();
     }
+
+    // Carga el producto como DTO desde la base (con categoría y solicitudes pendientes) y oculta el precio si corresponde.
+    // Se usa también en las respuestas de escritura para que siempre muestren el estado real.
+    internal static async Task<ProductDto> LoadProductDtoAsync(InventoryDbContext db, int id, ICurrentUserService currentUser)
+    {
+        var dto = await db.Products
+            .Where(p => p.Id == id)
+            .ProjectToType<ProductDto>()
+            .FirstOrDefaultAsync();
+        return dto is null
+            ? throw new NotFoundException("Product", id)
+            : HideSalePriceIfNeeded(dto, currentUser);
+    }
+
+    internal static async Task<ProductChangeRequestDto> LoadChangeRequestDtoAsync(InventoryDbContext db, int id)
+    {
+        var dto = await db.ProductChangeRequests
+            .Where(r => r.Id == id)
+            .ProjectToType<ProductChangeRequestDto>()
+            .FirstOrDefaultAsync();
+        return dto ?? throw new NotFoundException("ProductChangeRequest", id);
+    }
+
+    private static IResult PriceProblem(string detail)
+        => Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Precio no permitido", detail: detail);
 
     // El precio de venta (y el margen) es información comercial: Inventario no lo ve,
     // para evitar fugas de datos y que se confunda con el costo. Admin y Contador sí.

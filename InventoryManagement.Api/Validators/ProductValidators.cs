@@ -31,7 +31,8 @@ public class CreateProductValidator : AbstractValidator<CreateProductDto>
 
         RuleFor(x => x.Price)
             .GreaterThan(0).WithMessage("El precio debe ser mayor a 0")
-            .LessThanOrEqualTo(999999.99m).WithMessage("El precio no puede exceder 999,999.99");
+            .LessThanOrEqualTo(999999.99m).WithMessage("El precio no puede exceder 999,999.99")
+            .When(x => x.Price.HasValue); // opcional: Inventario no envía precio (lo define Admin al aprobar)
 
         RuleFor(x => x.Cost)
             .GreaterThanOrEqualTo(0).WithMessage("El costo no puede ser negativo")
@@ -95,7 +96,8 @@ public class UpdateProductValidator : AbstractValidator<UpdateProductDto>
 
         RuleFor(x => x.Price)
             .GreaterThan(0).WithMessage("El precio debe ser mayor a 0")
-            .LessThanOrEqualTo(999999.99m).WithMessage("El precio no puede exceder 999,999.99");
+            .LessThanOrEqualTo(999999.99m).WithMessage("El precio no puede exceder 999,999.99")
+            .When(x => x.Price.HasValue); // opcional: Inventario no envía precio (lo define Admin al aprobar)
 
         RuleFor(x => x.Cost)
             .GreaterThanOrEqualTo(0).WithMessage("El costo no puede ser negativo")

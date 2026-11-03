@@ -117,6 +117,15 @@ namespace InventoryManagement.Api.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<byte>("ApprovalStatus")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("ApprovedBy")
+                        .HasColumnType("integer");
+
                     b.Property<int>("CategoryId")
                         .HasColumnType("integer");
 
@@ -135,10 +144,8 @@ namespace InventoryManagement.Api.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true);
+                    b.Property<byte>("Lifecycle")
+                        .HasColumnType("smallint");
 
                     b.Property<int>("MinStockLevel")
                         .ValueGeneratedOnAdd()
@@ -153,8 +160,12 @@ namespace InventoryManagement.Api.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
-                    b.Property<decimal>("Price")
+                    b.Property<decimal?>("Price")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("SKU")
                         .HasMaxLength(50)
@@ -176,6 +187,8 @@ namespace InventoryManagement.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ApprovalStatus");
+
                     b.HasIndex("CategoryId");
 
                     b.HasIndex("CreatedBy");
@@ -193,11 +206,12 @@ namespace InventoryManagement.Api.Migrations
                         new
                         {
                             Id = 1,
+                            ApprovalStatus = (byte)2,
                             CategoryId = 1,
                             Cost = 950.00m,
                             CreatedAt = new DateTime(2026, 10, 19, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Laptop para gaming de alto rendimiento",
-                            IsActive = true,
+                            Lifecycle = (byte)1,
                             MinStockLevel = 5,
                             Name = "Laptop Gaming",
                             Price = 1299.99m,
@@ -208,11 +222,12 @@ namespace InventoryManagement.Api.Migrations
                         new
                         {
                             Id = 2,
+                            ApprovalStatus = (byte)2,
                             CategoryId = 1,
                             Cost = 25.00m,
                             CreatedAt = new DateTime(2026, 10, 19, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Mouse ergonómico inalámbrico",
-                            IsActive = true,
+                            Lifecycle = (byte)1,
                             MinStockLevel = 10,
                             Name = "Mouse Inalámbrico",
                             Price = 49.99m,
@@ -223,11 +238,12 @@ namespace InventoryManagement.Api.Migrations
                         new
                         {
                             Id = 3,
+                            ApprovalStatus = (byte)2,
                             CategoryId = 1,
                             Cost = 45.00m,
                             CreatedAt = new DateTime(2026, 10, 19, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Teclado mecánico RGB",
-                            IsActive = true,
+                            Lifecycle = (byte)1,
                             MinStockLevel = 8,
                             Name = "Teclado Mecánico",
                             Price = 89.99m,
@@ -238,11 +254,12 @@ namespace InventoryManagement.Api.Migrations
                         new
                         {
                             Id = 4,
+                            ApprovalStatus = (byte)2,
                             CategoryId = 4,
                             Cost = 12.00m,
                             CreatedAt = new DateTime(2026, 10, 19, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Camiseta transpirable para deporte",
-                            IsActive = true,
+                            Lifecycle = (byte)1,
                             MinStockLevel = 20,
                             Name = "Camiseta Deportiva",
                             Price = 24.99m,
@@ -253,11 +270,12 @@ namespace InventoryManagement.Api.Migrations
                         new
                         {
                             Id = 5,
+                            ApprovalStatus = (byte)2,
                             CategoryId = 4,
                             Cost = 65.00m,
                             CreatedAt = new DateTime(2026, 10, 19, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Zapatillas para running profesionales",
-                            IsActive = true,
+                            Lifecycle = (byte)1,
                             MinStockLevel = 10,
                             Name = "Zapatillas Running",
                             Price = 119.99m,
@@ -268,11 +286,12 @@ namespace InventoryManagement.Api.Migrations
                         new
                         {
                             Id = 6,
+                            ApprovalStatus = (byte)2,
                             CategoryId = 3,
                             Cost = 18.00m,
                             CreatedAt = new DateTime(2026, 10, 19, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Lámpara de escritorio LED regulable",
-                            IsActive = true,
+                            Lifecycle = (byte)1,
                             MinStockLevel = 10,
                             Name = "Lámpara LED",
                             Price = 34.99m,
@@ -280,6 +299,79 @@ namespace InventoryManagement.Api.Migrations
                             StockQuantity = 40,
                             UnitOfMeasure = "UN"
                         });
+                });
+
+            modelBuilder.Entity("InventoryManagement.Api.Models.ProductChangeRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("CategoryId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("Cost")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int?>("MinStockLevel")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<int>("RequestedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ReviewComment")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("ReviewedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SKU")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<byte>("Status")
+                        .HasColumnType("smallint");
+
+                    b.Property<byte>("Type")
+                        .HasColumnType("smallint");
+
+                    b.Property<string>("UnitOfMeasure")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("ProductId", "Type", "Status");
+
+                    b.ToTable("product_change_requests", (string)null);
                 });
 
             modelBuilder.Entity("InventoryManagement.Api.Models.RefreshToken", b =>
@@ -492,6 +584,17 @@ namespace InventoryManagement.Api.Migrations
                     b.Navigation("ModifiedByUser");
                 });
 
+            modelBuilder.Entity("InventoryManagement.Api.Models.ProductChangeRequest", b =>
+                {
+                    b.HasOne("InventoryManagement.Api.Models.Product", "Product")
+                        .WithMany("ChangeRequests")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+                });
+
             modelBuilder.Entity("InventoryManagement.Api.Models.RefreshToken", b =>
                 {
                     b.HasOne("InventoryManagement.Api.Models.User", "User")
@@ -526,6 +629,11 @@ namespace InventoryManagement.Api.Migrations
                     b.Navigation("ChildCategories");
 
                     b.Navigation("Products");
+                });
+
+            modelBuilder.Entity("InventoryManagement.Api.Models.Product", b =>
+                {
+                    b.Navigation("ChangeRequests");
                 });
 
             modelBuilder.Entity("InventoryManagement.Api.Models.User", b =>
