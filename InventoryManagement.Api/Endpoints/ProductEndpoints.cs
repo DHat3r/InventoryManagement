@@ -106,7 +106,7 @@ public static class ProductEndpoints
                 }
             }));
         })
-        .RequireAuthorization("RequireInventarioOrAdmin") // Ver productos: Inventario, Admin
+        .RequireAuthorization("RequireInventarioOrContadorOrAdmin") // Ver productos: Inventario, Contador (solo lectura), Admin
         .WithName("GetProducts")
         .WithOpenApi();
 
@@ -122,7 +122,7 @@ public static class ProductEndpoints
                 ? Results.Ok(OkResponse(entity)) 
                 : throw new NotFoundException("Product", id);
         })
-        .RequireAuthorization("RequireInventarioOrAdmin")
+        .RequireAuthorization("RequireInventarioOrContadorOrAdmin")
         .WithName("GetProductById")
         .WithOpenApi();
 
@@ -137,7 +137,7 @@ public static class ProductEndpoints
                 .ToListAsync();
             return Results.Ok(OkResponse(list));
         })
-        .RequireAuthorization("RequireInventarioOrAdmin") // Stock bajo: Inventario, Admin
+        .RequireAuthorization("RequireInventarioOrContadorOrAdmin") // Stock bajo: Inventario, Contador, Admin
         .WithName("GetLowStockProducts")
         .WithOpenApi();
 
