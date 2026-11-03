@@ -14,7 +14,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-inventory_db}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env (copia .env.example)}
     ports:
       - "5432:5432"
     volumes:
@@ -38,8 +38,8 @@ services:
       - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Production}
       - ASPNETCORE_URLS=${ASPNETCORE_URLS:-http://+:8080}
       - Database__MigrateOnStartup=${DATABASE_MIGRATE_ON_STARTUP:-true}
-      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=${POSTGRES_DB:-inventory_db};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-postgres}
-      - Jwt__Secret=${JWT_SECRET:-InventoryManagement-SuperSecretKey-2024-MustBeAtLeast32Chars!}
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=${POSTGRES_DB:-inventory_db};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
+      - Jwt__Secret=${JWT_SECRET:?Define JWT_SECRET en .env (minimo 32 caracteres)}
       - Jwt__Issuer=${JWT_ISSUER:-InventoryManagement.Api}
       - Jwt__Audience=${JWT_AUDIENCE:-InventoryManagement.Client}
       - Jwt__AccessTokenMinutes=${JWT_ACCESS_TOKEN_MINUTES:-15}
@@ -47,7 +47,7 @@ services:
       - AdminSeed__UserName=${ADMIN_USERNAME:-admin}
       - AdminSeed__Rut=${ADMIN_RUT:-765432105}
       - AdminSeed__FullName=${ADMIN_FULL_NAME:-Administrador del Sistema}
-      - AdminSeed__Password=${ADMIN_PASSWORD:-Admin123!}
+      - AdminSeed__Password=${ADMIN_PASSWORD:?Define ADMIN_PASSWORD en .env}
       - AdminSeed__RotateOnStartup=${ADMIN_ROTATE_ON_STARTUP:-true}
       - AdminSeed__RunOnStartup=${ADMIN_RUN_ON_STARTUP:-true}
       - Cors__AllowedOrigins=${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173,https://localhost:3000}
