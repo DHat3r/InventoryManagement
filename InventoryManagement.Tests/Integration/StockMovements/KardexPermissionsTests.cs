@@ -10,7 +10,7 @@ using Xunit;
 namespace InventoryManagement.Tests.Integration.StockMovements;
 
 /// <summary>
-/// Inventario ve el kardex de stock (cantidades) pero no los valores: ni el resumen valorizado ni el costo unitario.
+/// Inventario ve el kardex con el costo de ingreso de cada movimiento, pero no el resumen valorizado (contable).
 /// </summary>
 public class KardexPermissionsTests : IntegrationTestBase
 {
@@ -19,7 +19,7 @@ public class KardexPermissionsTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task Inventario_GetKardex_ReturnsHistoryWithoutUnitCost()
+    public async Task Inventario_GetKardex_ReturnsHistoryWithUnitCost()
     {
         // Arrange: el admin registra una entrada con costo para que haya al menos un movimiento valorizado
         var entrada = new CreateStockMovementDto(MovementType.Entrada, 3, "Test permisos", "PERM-001", 100.00m);
@@ -33,7 +33,7 @@ public class KardexPermissionsTests : IntegrationTestBase
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var result = await response.Content.ReadFromJsonAsync<ApiResponse<PagedResult<StockMovementListDto>>>(JsonOptions);
         result!.Data!.Data.Should().NotBeEmpty();
-        result.Data.Data.Should().OnlyContain(m => m.UnitCost == null);
+        result.Data.Data.Should().Contain(m => m.UnitCost == 100.00m);
     }
 
     [Fact]

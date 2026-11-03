@@ -136,7 +136,6 @@ public static class KardexEndpoints
             int id,
             InventoryDbContext db,
             IValidator<StockMovementFilterDto> filterValidator,
-            ICurrentUserService currentUser,
             [AsParameters] StockMovementFilterDto filter) =>
         {
             var validation = await filterValidator.ValidateAsync(filter);
@@ -169,10 +168,6 @@ public static class KardexEndpoints
                 .ProjectToType<StockMovementListDto>()
                 .ToListAsync();
 
-            // Los valores son información contable: Inventario ve las cantidades, pero no el costo unitario
-            if (!currentUser.IsInRole(UserRole.Admin, UserRole.Contador))
-                items = items.Select(m => m with { UnitCost = null }).ToList();
-
             var paged = PagedResult<StockMovementListDto>.Create(items, total, filter.Page, filter.PageSize);
             return Results.Ok(OkResponse(paged, meta: new
             {
@@ -187,7 +182,7 @@ public static class KardexEndpoints
                 }
             }));
         })
-        .RequireAuthorization("RequireInventarioOrContadorOrAdmin") // Kardex de stock: Inventario, Contador, Admin (sin costos para Inventario)
+        .RequireAuthorization("RequireInventarioOrContadorOrAdmin") // Kardex de stock: Inventario, Contador, Admin (el costo unitario es valor de ingreso)
         .WithName("GetProductKardex")
         .WithOpenApi();
 
