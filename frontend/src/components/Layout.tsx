@@ -12,6 +12,12 @@ export default function Layout() {
           <NavLink to="/productos" className="nav-link">
             Productos
           </NavLink>
+          {/* La API también restringe la bandeja a Admin; el enlace solo evita mostrar algo inútil */}
+          {user?.role === 'Admin' && (
+            <NavLink to="/aprobaciones" className="nav-link">
+              Aprobaciones
+            </NavLink>
+          )}
         </div>
 
         <div className="header-right">
