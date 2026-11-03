@@ -29,6 +29,8 @@ export default function KardexPage() {
   const { user } = useAuth()
   // Los valores (costos, valor del stock) son contables: Inventario solo ve cantidades
   const canSeeValues = user?.role === 'Admin' || user?.role === 'Contador'
+  // Contador solo lee: la API rechaza sus movimientos, así que no se le muestra el formulario
+  const canRegisterMovements = user?.role === 'Admin' || user?.role === 'Inventario'
   const productId = Number(id)
   const isValidId = Number.isInteger(productId)
 
@@ -118,9 +120,11 @@ export default function KardexPage() {
         )}
       </div>
 
-      <div className="card" style={{ marginTop: 16 }}>
-        <MovementForm productId={productId} onCreated={reload} />
-      </div>
+      {canRegisterMovements && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <MovementForm productId={productId} onCreated={reload} />
+        </div>
+      )}
 
       <div className="card" style={{ marginTop: 16 }}>
         {movements.data.length === 0 ? (
