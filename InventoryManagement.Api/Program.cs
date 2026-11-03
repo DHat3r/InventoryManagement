@@ -37,12 +37,6 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
     .Enrich.WithEnvironmentName());
 
 // ─── Services ───
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c =>
-{
-    c.SupportNonNullableReferenceTypes();
-});
-
 // JSON: enums as strings
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
