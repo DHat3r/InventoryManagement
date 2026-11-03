@@ -55,31 +55,49 @@ public class CreateStockMovementValidator : AbstractValidator<CreateStockMovemen
         if (_productId <= 0) return ("", "Producto no válido");
 
         var product = await _db.Products
-            .Where(p => p.Id == _productId && p.Lifecycle != ProductLifecycle.Descontinuado)
+            .Where(p => p.Id == _productId)
             .FirstOrDefaultAsync(ct);
 
-        if (product is null) return ("", "El producto no existe o está inactivo");
+        if (product is null) return ("", "El producto no existe");
 
         return dto.Type switch
         {
-            MovementType.Entrada => ValidateEntrada(dto),
-            MovementType.Salida => ValidateSalida(dto, product),
-            MovementType.Ajuste => ValidateAjuste(dto, product),
+            MovementType.Entrada => ValidateEntrada(dto, product),
+            MovementType.Salida => await ValidateSalidaAsync(dto, product, ct),
+            MovementType.Ajuste => ValidateAjuste(dto, product), // corrige conteos: nunca se bloquea por estado
             _ => (nameof(dto.Type), "Tipo de movimiento inválido")
         };
     }
 
-    private static (string, string)? ValidateEntrada(CreateStockMovementDto dto)
+    private static (string, string)? ValidateEntrada(CreateStockMovementDto dto, Product product)
     {
-        // Entrada: UnitCost requerido (para valoración)
+        // Entrada: se acepta aunque el producto esté pendiente o retirado (la mercadería ya llegó),
+        // pero no si está descontinuado (ya no se compra)
+        if (product.Lifecycle == ProductLifecycle.Descontinuado)
+            return ("", "El producto está descontinuado: no recibe entradas");
+
+        // UnitCost requerido (para valoración)
         return dto.UnitCost.HasValue
             ? null
             : (nameof(dto.UnitCost), "El costo unitario es obligatorio para una entrada");
     }
 
-    private static (string, string)? ValidateSalida(CreateStockMovementDto dto, Product product)
+    private async Task<(string, string)?> ValidateSalidaAsync(CreateStockMovementDto dto, Product product, CancellationToken ct)
     {
-        // Salida: stock suficiente. UnitCost opcional (se usa el costo del producto)
+        // Salida = despacho: solo productos aprobados, no retirados y sin un retiro en revisión
+        if (product.ApprovalStatus == ProductApprovalStatus.Pendiente)
+            return ("", "El producto está pendiente de aprobación: no se puede despachar");
+        if (product.ApprovalStatus == ProductApprovalStatus.Rechazado)
+            return ("", "El producto fue rechazado: no se puede despachar");
+        if (product.Lifecycle == ProductLifecycle.Retirado)
+            return ("", "El producto está retirado de la venta: no se puede despachar");
+
+        var hasPendingWithdrawal = await _db.ProductChangeRequests.AnyAsync(r =>
+            r.ProductId == product.Id && r.Type == ChangeRequestType.Retiro && r.Status == ChangeRequestStatus.Pendiente, ct);
+        if (hasPendingWithdrawal)
+            return ("", "El producto está posiblemente no disponible: hay un retiro esperando aprobación");
+
+        // Stock suficiente. UnitCost opcional (se usa el costo del producto)
         return product.StockQuantity < dto.Quantity
             ? (nameof(dto.Quantity), $"Stock insuficiente. Disponible: {product.StockQuantity}, solicitado: {dto.Quantity}")
             : null;
