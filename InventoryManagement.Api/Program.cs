@@ -94,6 +94,7 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy("RequireAdmin", p => p.RequireRole("Admin"))
     .AddPolicy("RequireInventarioOrAdmin", p => p.RequireRole("Admin", "Inventario"))
     .AddPolicy("RequireContadorOrAdmin", p => p.RequireRole("Admin", "Contador"))
+    .AddPolicy("RequireInventarioOrContadorOrAdmin", p => p.RequireRole("Admin", "Inventario", "Contador"))
     .AddPolicy("RequireCompradorOrInventarioOrAdmin", p => p.RequireRole("Admin", "Inventario", "Comprador"));
 
 // ─── Health Checks ───
@@ -782,6 +783,7 @@ products.MapGet("/{id:int}/kardex", async (
     int id,
     InventoryDbContext db,
     IValidator<StockMovementFilterDto> filterValidator,
+    ICurrentUserService currentUser,
     [AsParameters] StockMovementFilterDto filter) =>
 {
     var validation = await filterValidator.ValidateAsync(filter);
@@ -814,6 +816,10 @@ products.MapGet("/{id:int}/kardex", async (
         .ProjectToType<StockMovementListDto>()
         .ToListAsync();
 
+    // Los valores son información contable: Inventario ve las cantidades, pero no el costo unitario
+    if (!currentUser.IsInRole(UserRole.Admin, UserRole.Contador))
+        items = items.Select(m => m with { UnitCost = null }).ToList();
+
     var paged = PagedResult<StockMovementListDto>.Create(items, total, filter.Page, filter.PageSize);
     return Results.Ok(OkResponse(paged, meta: new
     {
@@ -828,7 +834,7 @@ products.MapGet("/{id:int}/kardex", async (
         }
     }));
 })
-.RequireAuthorization("RequireContadorOrAdmin") // Ver kardex: Contador, Inventario, Admin
+.RequireAuthorization("RequireInventarioOrContadorOrAdmin") // Kardex de stock: Inventario, Contador, Admin (sin costos para Inventario)
 .WithName("GetProductKardex")
 .WithOpenApi();
 
