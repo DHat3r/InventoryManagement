@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using InventoryManagement.Api.Common;
 using InventoryManagement.Api.DTOs;
+using InventoryManagement.Api.Models;
 
 namespace InventoryManagement.Tests.Infrastructure;
 
@@ -40,6 +41,28 @@ public abstract class IntegrationTestBase : IClassFixture<TestWebApplicationFact
         var result = await response.Content.ReadFromJsonAsync<ApiResponse<LoginResponseDto>>(JsonOptions);
         Client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", result!.Data!.AccessToken);
+    }
+
+    /// <summary>
+    /// Crea (si no existe) un usuario con el rol indicado y devuelve un cliente autenticado como él.
+    /// Si el usuario ya existe (otro test de la clase lo creó), la API responde 400 y se ignora.
+    /// </summary>
+    protected async Task<HttpClient> CreateClientForRoleAsync(UserRole role, string userName, string rut)
+    {
+        const string password = "Rol12345!";
+        await Client.PostAsJsonAsync("/api/users", new CreateUserDto(
+            UserName: userName,
+            Password: password,
+            FullName: $"Usuario {role}",
+            Rut: rut,
+            Role: role), JsonOptions);
+
+        var client = Factory.CreateClient();
+        var login = await client.PostAsJsonAsync("/api/auth/login", new LoginDto(userName, password));
+        login.EnsureSuccessStatusCode();
+        var result = await login.Content.ReadFromJsonAsync<ApiResponse<LoginResponseDto>>(JsonOptions);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", result!.Data!.AccessToken);
+        return client;
     }
 
     public Task DisposeAsync()

@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using FluentAssertions;
 using InventoryManagement.Api.Common;
@@ -15,9 +14,6 @@ namespace InventoryManagement.Tests.Integration.StockMovements;
 /// </summary>
 public class KardexPermissionsTests : IntegrationTestBase
 {
-    private const string InventarioUserName = "inventario.test";
-    private const string InventarioPassword = "Inventario123!";
-
     public KardexPermissionsTests(TestWebApplicationFactory factory) : base(factory)
     {
     }
@@ -69,24 +65,6 @@ public class KardexPermissionsTests : IntegrationTestBase
         result!.Data!.Data.Should().Contain(m => m.UnitCost != null);
     }
 
-    /// <summary>
-    /// Crea (si no existe) un usuario con rol Inventario y devuelve un cliente autenticado como él.
-    /// </summary>
-    private async Task<HttpClient> CreateInventarioClientAsync()
-    {
-        // Si ya existe (otro test de la clase lo creó), la API responde 400 y se ignora
-        await Client.PostAsJsonAsync("/api/users", new CreateUserDto(
-            UserName: InventarioUserName,
-            Password: InventarioPassword,
-            FullName: "Usuario de Inventario",
-            Rut: "11.111.111-1",
-            Role: UserRole.Inventario), JsonOptions);
-
-        var client = Factory.CreateClient();
-        var login = await client.PostAsJsonAsync("/api/auth/login", new LoginDto(InventarioUserName, InventarioPassword));
-        login.EnsureSuccessStatusCode();
-        var result = await login.Content.ReadFromJsonAsync<ApiResponse<LoginResponseDto>>(JsonOptions);
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", result!.Data!.AccessToken);
-        return client;
-    }
+    private Task<HttpClient> CreateInventarioClientAsync()
+        => CreateClientForRoleAsync(UserRole.Inventario, "inventario.test", "11.111.111-1");
 }
