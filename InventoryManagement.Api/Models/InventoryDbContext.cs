@@ -162,24 +162,28 @@ public class InventoryDbContext : DbContext
         SeedData(modelBuilder);
     }
 
+    // Fecha fija: HasData debe ser determinista. Con DateTime.UtcNow el modelo
+    // cambia en cada build y EF cree que siempre falta una migración.
+    private static readonly DateTime SeedDate = new(2026, 10, 19, 0, 0, 0, DateTimeKind.Utc);
+
     private static void SeedData(ModelBuilder modelBuilder)
     {
         // Seed Categories
         modelBuilder.Entity<Category>().HasData(
-            new Category { Id = 1, Name = "Electrónica", Description = "Productos electrónicos y tecnológicos", IsActive = true, CreatedAt = DateTime.UtcNow },
-            new Category { Id = 2, Name = "Ropa", Description = "Prendas de vestir y accesorios", IsActive = true, CreatedAt = DateTime.UtcNow },
-            new Category { Id = 3, Name = "Hogar", Description = "Artículos para el hogar y decoración", IsActive = true, CreatedAt = DateTime.UtcNow },
-            new Category { Id = 4, Name = "Deportes", Description = "Equipamiento y ropa deportiva", IsActive = true, CreatedAt = DateTime.UtcNow }
+            new Category { Id = 1, Name = "Electrónica", Description = "Productos electrónicos y tecnológicos", IsActive = true, CreatedAt = SeedDate },
+            new Category { Id = 2, Name = "Ropa", Description = "Prendas de vestir y accesorios", IsActive = true, CreatedAt = SeedDate },
+            new Category { Id = 3, Name = "Hogar", Description = "Artículos para el hogar y decoración", IsActive = true, CreatedAt = SeedDate },
+            new Category { Id = 4, Name = "Deportes", Description = "Equipamiento y ropa deportiva", IsActive = true, CreatedAt = SeedDate }
         );
 
         // Seed Products
         modelBuilder.Entity<Product>().HasData(
-            new Product { Id = 1, Name = "Laptop Gaming", SKU = "LAP-GAM-001", Description = "Laptop para gaming de alto rendimiento", Price = 1299.99m, Cost = 950.00m, StockQuantity = 15, MinStockLevel = 5, UnitOfMeasure = "UN", CategoryId = 1, IsActive = true, CreatedAt = DateTime.UtcNow },
-            new Product { Id = 2, Name = "Mouse Inalámbrico", SKU = "MOU-WLS-001", Description = "Mouse ergonómico inalámbrico", Price = 49.99m, Cost = 25.00m, StockQuantity = 50, MinStockLevel = 10, UnitOfMeasure = "UN", CategoryId = 1, IsActive = true, CreatedAt = DateTime.UtcNow },
-            new Product { Id = 3, Name = "Teclado Mecánico", SKU = "KEY-MEC-001", Description = "Teclado mecánico RGB", Price = 89.99m, Cost = 45.00m, StockQuantity = 30, MinStockLevel = 8, UnitOfMeasure = "UN", CategoryId = 1, IsActive = true, CreatedAt = DateTime.UtcNow },
-            new Product { Id = 4, Name = "Camiseta Deportiva", SKU = "TSH-SPT-001", Description = "Camiseta transpirable para deporte", Price = 24.99m, Cost = 12.00m, StockQuantity = 100, MinStockLevel = 20, UnitOfMeasure = "UN", CategoryId = 4, IsActive = true, CreatedAt = DateTime.UtcNow },
-            new Product { Id = 5, Name = "Zapatillas Running", SKU = "SHO-RUN-001", Description = "Zapatillas para running profesionales", Price = 119.99m, Cost = 65.00m, StockQuantity = 25, MinStockLevel = 10, UnitOfMeasure = "PAR", CategoryId = 4, IsActive = true, CreatedAt = DateTime.UtcNow },
-            new Product { Id = 6, Name = "Lámpara LED", SKU = "LAM-LED-001", Description = "Lámpara de escritorio LED regulable", Price = 34.99m, Cost = 18.00m, StockQuantity = 40, MinStockLevel = 10, UnitOfMeasure = "UN", CategoryId = 3, IsActive = true, CreatedAt = DateTime.UtcNow }
+            new Product { Id = 1, Name = "Laptop Gaming", SKU = "LAP-GAM-001", Description = "Laptop para gaming de alto rendimiento", Price = 1299.99m, Cost = 950.00m, StockQuantity = 15, MinStockLevel = 5, UnitOfMeasure = "UN", CategoryId = 1, IsActive = true, CreatedAt = SeedDate },
+            new Product { Id = 2, Name = "Mouse Inalámbrico", SKU = "MOU-WLS-001", Description = "Mouse ergonómico inalámbrico", Price = 49.99m, Cost = 25.00m, StockQuantity = 50, MinStockLevel = 10, UnitOfMeasure = "UN", CategoryId = 1, IsActive = true, CreatedAt = SeedDate },
+            new Product { Id = 3, Name = "Teclado Mecánico", SKU = "KEY-MEC-001", Description = "Teclado mecánico RGB", Price = 89.99m, Cost = 45.00m, StockQuantity = 30, MinStockLevel = 8, UnitOfMeasure = "UN", CategoryId = 1, IsActive = true, CreatedAt = SeedDate },
+            new Product { Id = 4, Name = "Camiseta Deportiva", SKU = "TSH-SPT-001", Description = "Camiseta transpirable para deporte", Price = 24.99m, Cost = 12.00m, StockQuantity = 100, MinStockLevel = 20, UnitOfMeasure = "UN", CategoryId = 4, IsActive = true, CreatedAt = SeedDate },
+            new Product { Id = 5, Name = "Zapatillas Running", SKU = "SHO-RUN-001", Description = "Zapatillas para running profesionales", Price = 119.99m, Cost = 65.00m, StockQuantity = 25, MinStockLevel = 10, UnitOfMeasure = "PAR", CategoryId = 4, IsActive = true, CreatedAt = SeedDate },
+            new Product { Id = 6, Name = "Lámpara LED", SKU = "LAM-LED-001", Description = "Lámpara de escritorio LED regulable", Price = 34.99m, Cost = 18.00m, StockQuantity = 40, MinStockLevel = 10, UnitOfMeasure = "UN", CategoryId = 3, IsActive = true, CreatedAt = SeedDate }
         );
     }
 }
