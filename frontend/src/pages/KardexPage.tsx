@@ -4,6 +4,7 @@ import { ApiError, apiFetch } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import type { KardexSummary, MovementType, PagedResult, Product, StockMovement } from '../api/types'
 import MovementForm from '../components/MovementForm'
+import ProductStatusBadge from '../components/ProductStatusBadge'
 import { formatDateTime, formatMoney } from '../utils/format'
 
 const PAGE_SIZE = 10
@@ -31,6 +32,8 @@ export default function KardexPage() {
   const canSeeValuation = user?.role === 'Admin' || user?.role === 'Contador'
   // Contador solo lee: la API rechaza sus movimientos, así que no se le muestra el formulario
   const canRegisterMovements = user?.role === 'Admin' || user?.role === 'Inventario'
+  // Editar y retirar son acciones de catálogo: las comparten Admin e Inventario
+  const canEditCatalog = user?.role === 'Admin' || user?.role === 'Inventario'
   const productId = Number(id)
   const isValidId = Number.isInteger(productId)
 
@@ -38,6 +41,8 @@ export default function KardexPage() {
   const [summary, setSummary] = useState<KardexSummary | null>(null)
   const [movements, setMovements] = useState<PagedResult<StockMovement> | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
     try {
@@ -70,6 +75,36 @@ export default function KardexPage() {
     }
   }
 
+  async function runAction(action: () => Promise<unknown>, successMessage: string) {
+    setActionMessage(null)
+    setActionError(null)
+    try {
+      await action()
+      setActionMessage(successMessage)
+      await reload()
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'No se pudo completar la acción')
+    }
+  }
+
+  async function withdraw() {
+    const reason = window.prompt('Motivo del retiro (por ejemplo, lote con falla)')
+    if (!reason) return
+    await runAction(
+      () => apiFetch(`/api/products/${productId}/withdraw`, { method: 'POST', body: { reason } }),
+      user?.role === 'Admin'
+        ? 'Producto retirado de la venta'
+        : 'Retiro solicitado: el producto queda sin salidas hasta que Admin decida',
+    )
+  }
+
+  async function reactivate() {
+    await runAction(
+      () => apiFetch(`/api/products/${productId}/reactivate`, { method: 'POST' }),
+      'Producto de nuevo a la venta',
+    )
+  }
+
   if (!isValidId) {
     return <div className="alert-error">Producto no válido</div>
   }
@@ -84,8 +119,33 @@ export default function KardexPage() {
       </Link>
       <h1>Kardex: {product.name}</h1>
       <p className="muted">
-        SKU {product.sku ?? '—'} · Categoría {product.category.name}
+        SKU {product.sku ?? '—'} · Categoría {product.category.name} <ProductStatusBadge product={product} />
       </p>
+
+      {product.rejectionReason && (
+        <div className="alert-error">Rechazado por Admin: {product.rejectionReason}</div>
+      )}
+
+      {canEditCatalog && (
+        <div className="toolbar">
+          <Link to={`/productos/${productId}/editar`} className="btn btn-secondary">
+            Editar
+          </Link>
+          {product.lifecycle === 'Activo' && !product.isPossiblyUnavailable && (
+            <button type="button" className="btn btn-secondary" onClick={withdraw}>
+              Retirar de la venta
+            </button>
+          )}
+          {user?.role === 'Admin' && product.lifecycle === 'Retirado' && (
+            <button type="button" className="btn" onClick={reactivate}>
+              Reactivar
+            </button>
+          )}
+        </div>
+      )}
+
+      {actionMessage && <div className="alert-success">{actionMessage}</div>}
+      {actionError && <div className="alert-error">{actionError}</div>}
 
       {error && <div className="alert-error">{error}</div>}
 
