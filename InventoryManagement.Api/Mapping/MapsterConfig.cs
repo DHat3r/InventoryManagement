@@ -88,6 +88,7 @@ public static class MapsterConfig
         TypeAdapterConfig<ProductChangeRequest, ProductChangeRequestDto>
             .NewConfig()
             .Map(dest => dest.ProductName, src => src.Product.Name)
+            .Map(dest => dest.SKU, src => src.SKU) // Mapster no empareja "SKU" solo (igual que en ProductDto)
             .Map(dest => dest.Current, src => new ProductCurrentValuesDto(
                 src.Product.Name, src.Product.SKU, src.Product.Description, src.Product.Cost,
                 src.Product.CategoryId, src.Product.MinStockLevel, src.Product.UnitOfMeasure));

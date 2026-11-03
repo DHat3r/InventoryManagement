@@ -206,6 +206,7 @@ public class ProductWorkflowTests : IntegrationTestBase
         var list = await ReadAsync<List<ProductChangeRequestDto>>(response);
         var request = list.Should().ContainSingle(r => r.Id == requestId).Subject;
         request.Name.Should().Be("Nombre en la bandeja");
+        request.SKU.Should().Be(product.SKU, "un campo propuesto igual al actual no debe verse como borrado");
         request.Current.Name.Should().Be(product.Name);
     }
 
