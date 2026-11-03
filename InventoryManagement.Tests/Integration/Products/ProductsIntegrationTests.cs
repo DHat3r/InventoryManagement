@@ -99,7 +99,7 @@ public class ProductsIntegrationTests : IntegrationTestBase
 
             if (previous.Price != current.Price)
             {
-                previous.Price.Should().BeGreaterThanOrEqualTo(current.Price);
+                previous.Price.Should().BeGreaterThanOrEqualTo(current.Price!.Value); // como admin, el precio siempre viene
             }
             else
             {

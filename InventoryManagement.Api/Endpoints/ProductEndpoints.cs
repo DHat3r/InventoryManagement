@@ -24,10 +24,17 @@ public static class ProductEndpoints
         products.MapGet("/", async (
             InventoryDbContext db,
             IValidator<ProductFilterDto> filterValidator,
+            ICurrentUserService currentUser,
             [AsParameters] ProductFilterDto filter) =>
         {
             var validation = await filterValidator.ValidateAsync(filter);
             if (!validation.IsValid) return ValidationProblem(validation);
+
+            if (!CanSeeSalePrice(currentUser) && UsesSalePrice(filter))
+                return Results.Problem(
+                    statusCode: StatusCodes.Status403Forbidden,
+                    title: "Acción no permitida",
+                    detail: "Tu rol no puede filtrar ni ordenar por precio de venta");
 
             var query = db.Products.Include(p => p.Category).AsQueryable();
 
@@ -91,6 +98,7 @@ public static class ProductEndpoints
                 .Take(filter.PageSize)
                 .ProjectToType<ProductListDto>()
                 .ToListAsync();
+            items = items.Select(p => HideSalePriceIfNeeded(p, currentUser)).ToList();
 
             var paged = PagedResult<ProductListDto>.Create(items, total, filter.Page, filter.PageSize);
             return Results.Ok(OkResponse(paged, meta: new
@@ -111,15 +119,15 @@ public static class ProductEndpoints
         .WithOpenApi();
 
         // GET by ID (completo)
-        products.MapGet("/{id:int}", async (int id, InventoryDbContext db) =>
+        products.MapGet("/{id:int}", async (int id, InventoryDbContext db, ICurrentUserService currentUser) =>
         {
             var entity = await db.Products
                 .Include(p => p.Category)
                 .Where(p => p.Id == id)
                 .ProjectToType<ProductDto>()
                 .FirstOrDefaultAsync();
-            return entity is not null 
-                ? Results.Ok(OkResponse(entity)) 
+            return entity is not null
+                ? Results.Ok(OkResponse(HideSalePriceIfNeeded(entity, currentUser)))
                 : throw new NotFoundException("Product", id);
         })
         .RequireAuthorization("RequireInventarioOrContadorOrAdmin")
@@ -127,7 +135,7 @@ public static class ProductEndpoints
         .WithOpenApi();
 
         // GET low stock
-        products.MapGet("/low-stock", async (InventoryDbContext db) =>
+        products.MapGet("/low-stock", async (InventoryDbContext db, ICurrentUserService currentUser) =>
         {
             var list = await db.Products
                 .Include(p => p.Category)
@@ -135,7 +143,7 @@ public static class ProductEndpoints
                 .OrderBy(p => p.StockQuantity)
                 .ProjectToType<ProductListDto>()
                 .ToListAsync();
-            return Results.Ok(OkResponse(list));
+            return Results.Ok(OkResponse(list.Select(p => HideSalePriceIfNeeded(p, currentUser)).ToList()));
         })
         .RequireAuthorization("RequireInventarioOrContadorOrAdmin") // Stock bajo: Inventario, Contador, Admin
         .WithName("GetLowStockProducts")
@@ -154,7 +162,7 @@ public static class ProductEndpoints
 
             // Recargar con Category para el DTO de salida
             await db.Entry(entity).Reference(p => p.Category).LoadAsync();
-            var result = entity.Adapt<ProductDto>();
+            var result = HideSalePriceIfNeeded(entity.Adapt<ProductDto>(), currentUser);
 
             return Results.Created($"/api/products/{entity.Id}", OkResponse(result, "Producto creado"));
         })
@@ -179,7 +187,7 @@ public static class ProductEndpoints
             await db.SaveChangesAsync();
 
             await db.Entry(entity).Reference(p => p.Category).LoadAsync();
-            var result = entity.Adapt<ProductDto>();
+            var result = HideSalePriceIfNeeded(entity.Adapt<ProductDto>(), currentUser);
 
             return Results.Ok(OkResponse(result, "Producto actualizado"));
         })
@@ -200,7 +208,7 @@ public static class ProductEndpoints
             entity.ModifiedBy = currentUser.UserId;
             await db.SaveChangesAsync();
 
-            var result = entity.Adapt<ProductDto>();
+            var result = HideSalePriceIfNeeded(entity.Adapt<ProductDto>(), currentUser);
             return Results.Ok(OkResponse(result, "Stock actualizado"));
         })
         .RequireAuthorization("RequireInventarioOrAdmin") // Actualizar stock: Inventario, Admin
@@ -223,6 +231,23 @@ public static class ProductEndpoints
         .WithName("DeleteProduct")
         .WithOpenApi();
     }
+
+    // El precio de venta (y el margen) es información comercial: Inventario no lo ve,
+    // para evitar fugas de datos y que se confunda con el costo. Admin y Contador sí.
+    private static bool CanSeeSalePrice(ICurrentUserService currentUser)
+        => currentUser.IsInRole(UserRole.Admin, UserRole.Contador);
+
+    private static ProductDto HideSalePriceIfNeeded(ProductDto dto, ICurrentUserService currentUser)
+        => CanSeeSalePrice(currentUser) ? dto : dto with { Price = null, MarginPercentage = null };
+
+    private static ProductListDto HideSalePriceIfNeeded(ProductListDto dto, ICurrentUserService currentUser)
+        => CanSeeSalePrice(currentUser) ? dto : dto with { Price = null };
+
+    // Filtrar u ordenar por precio permitiría deducirlo aunque la respuesta no lo traiga
+    private static bool UsesSalePrice(ProductFilterDto filter)
+        => filter.MinPrice.HasValue
+           || filter.MaxPrice.HasValue
+           || (filter.SortBy?.Contains("price", StringComparison.OrdinalIgnoreCase) ?? false);
 
     // Aplica ordenamiento multi-campo: "price:desc,name:asc,stock"
     private static IQueryable<Product> ApplyMultiSort(IQueryable<Product> query, string? sortBy, bool sortDesc)

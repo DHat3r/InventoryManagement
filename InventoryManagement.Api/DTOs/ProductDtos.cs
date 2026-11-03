@@ -10,7 +10,7 @@ public record ProductDto(
     string Name,
     string? SKU,
     string? Description,
-    decimal Price,
+    decimal? Price, // null para quien no ve el precio de venta (Inventario)
     decimal Cost,
     int StockQuantity,
     int MinStockLevel,
@@ -20,7 +20,7 @@ public record ProductDto(
     DateTime? UpdatedAt,
     CategoryRefDto Category,
     bool IsLowStock,
-    decimal MarginPercentage
+    decimal? MarginPercentage // null para quien no ve el precio de venta
 );
 
 /// <summary>
@@ -30,7 +30,7 @@ public record ProductListDto(
     int Id,
     string Name,
     string? SKU,
-    decimal Price,
+    decimal? Price, // null para quien no ve el precio de venta
     int StockQuantity,
     bool IsActive,
     bool IsLowStock,
