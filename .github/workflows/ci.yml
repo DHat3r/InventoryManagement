@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (.NET)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restaurar paquetes
+        run: dotnet restore InventoryManagement.sln
+
+      - name: Compilar
+        run: dotnet build InventoryManagement.sln --no-restore -c Release
+
+      # Los tests de integración levantan PostgreSQL con Testcontainers;
+      # los runners de GitHub ya traen Docker.
+      - name: Tests
+        run: dotnet test InventoryManagement.Tests --no-build -c Release
