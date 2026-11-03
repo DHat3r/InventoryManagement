@@ -212,6 +212,11 @@ if (app.Environment.IsDevelopment())
         c.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.None);
     });
 }
+else
+{
+    // HSTS: el navegador recordará usar solo HTTPS con este dominio
+    app.UseHsts();
+}
 
 // Exception Handling Middleware (must be early in pipeline)
 app.UseExceptionHandling();
