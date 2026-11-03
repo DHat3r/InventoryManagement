@@ -25,7 +25,23 @@ jobs:
       # Los tests de integración levantan PostgreSQL con Testcontainers;
       # los runners de GitHub ya traen Docker.
       - name: Tests
-        run: dotnet test InventoryManagement.Tests --no-build -c Release
+        run: >
+          dotnet test InventoryManagement.Tests --no-build -c Release
+          --collect:"XPlat Code Coverage" --results-directory coverage
+
+      # Las migraciones son código generado: se excluyen para no distorsionar el porcentaje.
+      - name: Reporte de cobertura
+        run: |
+          dotnet tool install -g dotnet-reportgenerator-globaltool
+          reportgenerator -reports:"coverage/**/coverage.cobertura.xml" -targetdir:coverage-report \
+            -reporttypes:"Html;MarkdownSummaryGithub" -classfilters:"-InventoryManagement.Api.Migrations.*"
+          cat coverage-report/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publicar reporte de cobertura
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobertura
+          path: coverage-report
 
   frontend:
     name: Frontend (React)
