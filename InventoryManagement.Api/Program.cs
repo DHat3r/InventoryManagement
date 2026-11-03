@@ -282,9 +282,7 @@ static IResult ValidationProblem(FluentValidation.Results.ValidationResult resul
 static ApiResponse<T> OkResponse<T>(T data, string? message = null, object? meta = null)
     => ApiResponse<T>.Ok(data, message, meta);
 
-/// <summary>
-/// Aplica ordenamiento multi-campo: "price:desc,name:asc,stock"
-/// </summary>
+// Aplica ordenamiento multi-campo: "price:desc,name:asc,stock"
 static IQueryable<Product> ApplyMultiSort(IQueryable<Product> query, string? sortBy, bool sortDesc)
 {
     if (string.IsNullOrWhiteSpace(sortBy))
