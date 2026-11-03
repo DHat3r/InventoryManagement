@@ -27,8 +27,8 @@ function messageFrom(err: unknown): string {
 export default function KardexPage() {
   const { id } = useParams()
   const { user } = useAuth()
-  // Los valores (costos, valor del stock) son contables: Inventario solo ve cantidades
-  const canSeeValues = user?.role === 'Admin' || user?.role === 'Contador'
+  // El resumen valorizado (costo promedio, valor del stock) es contable: solo Admin y Contador
+  const canSeeValuation = user?.role === 'Admin' || user?.role === 'Contador'
   // Contador solo lee: la API rechaza sus movimientos, así que no se le muestra el formulario
   const canRegisterMovements = user?.role === 'Admin' || user?.role === 'Inventario'
   const productId = Number(id)
@@ -43,7 +43,7 @@ export default function KardexPage() {
     try {
       const [productData, summaryData, movementsData] = await Promise.all([
         apiFetch<Product>(`/api/products/${productId}`),
-        canSeeValues ? apiFetch<KardexSummary>(`/api/products/${productId}/kardex/summary`) : Promise.resolve(null),
+        canSeeValuation ? apiFetch<KardexSummary>(`/api/products/${productId}/kardex/summary`) : Promise.resolve(null),
         fetchMovementsPage(productId, 1),
       ])
       setProduct(productData)
@@ -53,7 +53,7 @@ export default function KardexPage() {
     } catch (err) {
       setError(messageFrom(err))
     }
-  }, [productId, canSeeValues])
+  }, [productId, canSeeValuation])
 
   useEffect(() => {
     if (isValidId) {
@@ -73,7 +73,7 @@ export default function KardexPage() {
   if (!isValidId) {
     return <div className="alert-error">Producto no válido</div>
   }
-  if (!product || !movements || (canSeeValues && !summary)) {
+  if (!product || !movements || (canSeeValuation && !summary)) {
     return error ? <div className="alert-error">{error}</div> : <p>Cargando...</p>
   }
 
@@ -140,7 +140,7 @@ export default function KardexPage() {
                     <th>Cantidad</th>
                     <th>Stock anterior</th>
                     <th>Stock nuevo</th>
-                    {canSeeValues && <th>Costo unit.</th>}
+                    <th>Costo unit.</th>
                     <th>Motivo</th>
                     <th>Referencia</th>
                   </tr>
@@ -155,11 +155,9 @@ export default function KardexPage() {
                       <td className="num">{movement.quantity}</td>
                       <td className="num">{movement.previousStock}</td>
                       <td className="num">{movement.newStock}</td>
-                      {canSeeValues && (
-                        <td className="num">
-                          {movement.unitCost === null ? '—' : formatMoney(movement.unitCost)}
-                        </td>
-                      )}
+                      <td className="num">
+                        {movement.unitCost === null ? '—' : formatMoney(movement.unitCost)}
+                      </td>
                       <td>{movement.reason ?? '—'}</td>
                       <td>{movement.reference ?? '—'}</td>
                     </tr>

@@ -45,7 +45,7 @@ export type ProductListItem = {
   id: number
   name: string
   sku: string | null
-  price: number
+  price: number | null
   stockQuantity: number
   isActive: boolean
   isLowStock: boolean
@@ -59,7 +59,7 @@ export type Product = ProductListItem & {
   unitOfMeasure: string | null
   createdAt: string
   updatedAt: string | null
-  marginPercentage: number
+  marginPercentage: number | null
 }
 
 export type MovementType = 'Entrada' | 'Salida' | 'Ajuste'

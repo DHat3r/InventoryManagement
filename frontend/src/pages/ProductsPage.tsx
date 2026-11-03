@@ -2,13 +2,17 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { ApiError, apiFetch } from '../api/client'
 import type { PagedResult, ProductListItem } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
 import { formatMoney } from '../utils/format'
 
 const PAGE_SIZE = 20
 const SEARCH_DEBOUNCE_MS = 300
-const COLUMN_COUNT = 7
 
 export default function ProductsPage() {
+  const { user } = useAuth()
+  // El precio de venta es información comercial: Inventario no lo ve (evita fugas y confusiones con el costo)
+  const canSeeSalePrice = user?.role === 'Admin' || user?.role === 'Contador'
+  const columnCount = canSeeSalePrice ? 7 : 6
   const [searchText, setSearchText] = useState('')
   const [search, setSearch] = useState('')
   const [lowStockOnly, setLowStockOnly] = useState(false)
@@ -90,7 +94,7 @@ export default function ProductsPage() {
                 <th>SKU</th>
                 <th>Nombre</th>
                 <th>Categoría</th>
-                <th className="num">Precio</th>
+                {canSeeSalePrice && <th className="num">Precio</th>}
                 <th className="num">Stock</th>
                 <th>Estado</th>
                 <th>Acciones</th>
@@ -99,20 +103,26 @@ export default function ProductsPage() {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={COLUMN_COUNT} className="muted">
+                  <td colSpan={columnCount} className="muted">
                     Cargando...
                   </td>
                 </tr>
               )}
               {!loading && !error && products.length === 0 && (
                 <tr>
-                  <td colSpan={COLUMN_COUNT} className="muted">
+                  <td colSpan={columnCount} className="muted">
                     No hay productos que coincidan
                   </td>
                 </tr>
               )}
               {!loading &&
-                products.map((product) => <ProductRow key={product.id} product={product} />)}
+                products.map((product) => (
+                  <ProductRow
+                    key={product.id}
+                    product={product}
+                    canSeeSalePrice={canSeeSalePrice}
+                  />
+                ))}
             </tbody>
           </table>
         </div>
@@ -145,13 +155,21 @@ export default function ProductsPage() {
   )
 }
 
-function ProductRow({ product }: { product: ProductListItem }) {
+function ProductRow({
+  product,
+  canSeeSalePrice,
+}: {
+  product: ProductListItem
+  canSeeSalePrice: boolean
+}) {
   return (
     <tr>
       <td>{product.sku ?? '—'}</td>
       <td>{product.name}</td>
       <td>{product.category.name}</td>
-      <td className="num">{formatMoney(product.price)}</td>
+      {canSeeSalePrice && (
+        <td className="num">{product.price === null ? '—' : formatMoney(product.price)}</td>
+      )}
       <td className="num">{product.stockQuantity}</td>
       <td>
         <StatusBadge product={product} />
