@@ -36,7 +36,8 @@ services:
       - .env
     environment:
       - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Production}
-      - ASPNETCORE_URLS=${ASPNETCORE_URLS:-http://+:8080}
+      # Puerto interno fijo: lo usan el mapeo 5263:8080 y el healthcheck (no se lee de .env)
+      - ASPNETCORE_URLS=http://+:8080
       - Database__MigrateOnStartup=${DATABASE_MIGRATE_ON_STARTUP:-true}
       - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=${POSTGRES_DB:-inventory_db};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
       - Jwt__Secret=${JWT_SECRET:?Define JWT_SECRET en .env (minimo 32 caracteres)}
