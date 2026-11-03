@@ -259,8 +259,9 @@ app.MapHealthChecks("/health", new HealthCheckOptions
     ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
 });
 
-// Auto-migrate on startup (dev)
-if (app.Environment.IsDevelopment())
+// Auto-migrate on startup: siempre en Development; fuera de él solo si
+// Database:MigrateOnStartup=true (docker-compose lo activa para que arranque con un comando)
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
