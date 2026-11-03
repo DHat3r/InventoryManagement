@@ -17,6 +17,23 @@
 - **Usuarios:** administración de usuarios con validación de RUT chileno.
 - **Operación:** health checks, límite de peticiones por minuto, logs estructurados en JSON y errores en formato estándar (RFC 7807).
 
+### Permisos por rol
+
+Los valores (costos, valor del stock) son información contable: Inventario trabaja con cantidades y Contador con valores.
+
+| Acción | Admin | Inventario | Contador | Comprador |
+|--------|:-----:|:----------:|:--------:|:---------:|
+| Ver productos y stock bajo | ✅ | ✅ | ✅ | — |
+| Crear y editar productos y categorías | ✅ | ✅ | — | — |
+| Eliminar productos y categorías | ✅ | — | — | — |
+| Registrar entradas | ✅ | ✅ | — | ✅ |
+| Registrar salidas y ajustes | ✅ | ✅ | — | — |
+| Ver kardex (historial de movimientos) | ✅ | ✅ sin costos | ✅ | — |
+| Ver kardex valorizado (resumen) | ✅ | — | ✅ | — |
+| Administrar usuarios | ✅ | — | — | — |
+
+Las reglas se aplican en la API; el panel web solo oculta lo que cada rol no puede usar.
+
 ### Endpoints principales
 
 | Recurso | Endpoints |
@@ -95,10 +112,10 @@ cd InventoryManagement.Tests
 dotnet test
 ```
 
-Requiere Docker en ejecución. Hay 36 tests:
+Requiere Docker en ejecución. Hay 44 tests:
 
 - **15 unitarios** de los validadores (FluentValidation sobre EF Core InMemory).
-- **21 de integración** que levantan la API completa contra un PostgreSQL real en un contenedor (Testcontainers): auth, categorías, productos y movimientos de stock.
+- **29 de integración** que levantan la API completa contra un PostgreSQL real en un contenedor (Testcontainers): auth, categorías, productos, movimientos de stock y permisos por rol (Inventario y Contador).
 
 ### Integración continua
 
