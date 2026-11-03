@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { ApiError, apiFetch } from '../api/client'
+import { useAuth } from '../auth/AuthContext'
 import type { KardexSummary, MovementType, PagedResult, Product, StockMovement } from '../api/types'
 import MovementForm from '../components/MovementForm'
 import { formatDateTime, formatMoney } from '../utils/format'
@@ -25,6 +26,9 @@ function messageFrom(err: unknown): string {
 
 export default function KardexPage() {
   const { id } = useParams()
+  const { user } = useAuth()
+  // Los valores (costos, valor del stock) son contables: Inventario solo ve cantidades
+  const canSeeValues = user?.role === 'Admin' || user?.role === 'Contador'
   const productId = Number(id)
   const isValidId = Number.isInteger(productId)
 
@@ -37,7 +41,7 @@ export default function KardexPage() {
     try {
       const [productData, summaryData, movementsData] = await Promise.all([
         apiFetch<Product>(`/api/products/${productId}`),
-        apiFetch<KardexSummary>(`/api/products/${productId}/kardex/summary`),
+        canSeeValues ? apiFetch<KardexSummary>(`/api/products/${productId}/kardex/summary`) : Promise.resolve(null),
         fetchMovementsPage(productId, 1),
       ])
       setProduct(productData)
@@ -47,7 +51,7 @@ export default function KardexPage() {
     } catch (err) {
       setError(messageFrom(err))
     }
-  }, [productId])
+  }, [productId, canSeeValues])
 
   useEffect(() => {
     if (isValidId) {
@@ -67,7 +71,7 @@ export default function KardexPage() {
   if (!isValidId) {
     return <div className="alert-error">Producto no válido</div>
   }
-  if (!product || !summary || !movements) {
+  if (!product || !movements || (canSeeValues && !summary)) {
     return error ? <div className="alert-error">{error}</div> : <p>Cargando...</p>
   }
 
@@ -86,28 +90,32 @@ export default function KardexPage() {
       <div className="grid-stats" style={{ marginTop: 16 }}>
         <div className="stat">
           <div className="stat-label">Stock actual</div>
-          <div className="stat-value">{summary.currentStock}</div>
+          <div className="stat-value">{product.stockQuantity}</div>
         </div>
-        <div className="stat">
-          <div className="stat-label">Costo promedio</div>
-          <div className="stat-value">{formatMoney(summary.averageCost)}</div>
-        </div>
-        <div className="stat">
-          <div className="stat-label">Valor del stock</div>
-          <div className="stat-value">{formatMoney(summary.stockValue)}</div>
-        </div>
-        <div className="stat">
-          <div className="stat-label">Total entradas</div>
-          <div className="stat-value">{summary.totalEntradas}</div>
-        </div>
-        <div className="stat">
-          <div className="stat-label">Total salidas</div>
-          <div className="stat-value">{summary.totalSalidas}</div>
-        </div>
-        <div className="stat">
-          <div className="stat-label">Total ajustes</div>
-          <div className="stat-value">{summary.totalAjustes}</div>
-        </div>
+        {summary && (
+          <>
+            <div className="stat">
+              <div className="stat-label">Costo promedio</div>
+              <div className="stat-value">{formatMoney(summary.averageCost)}</div>
+            </div>
+            <div className="stat">
+              <div className="stat-label">Valor del stock</div>
+              <div className="stat-value">{formatMoney(summary.stockValue)}</div>
+            </div>
+            <div className="stat">
+              <div className="stat-label">Total entradas</div>
+              <div className="stat-value">{summary.totalEntradas}</div>
+            </div>
+            <div className="stat">
+              <div className="stat-label">Total salidas</div>
+              <div className="stat-value">{summary.totalSalidas}</div>
+            </div>
+            <div className="stat">
+              <div className="stat-label">Total ajustes</div>
+              <div className="stat-value">{summary.totalAjustes}</div>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>
@@ -128,7 +136,7 @@ export default function KardexPage() {
                     <th>Cantidad</th>
                     <th>Stock anterior</th>
                     <th>Stock nuevo</th>
-                    <th>Costo unit.</th>
+                    {canSeeValues && <th>Costo unit.</th>}
                     <th>Motivo</th>
                     <th>Referencia</th>
                   </tr>
@@ -143,9 +151,11 @@ export default function KardexPage() {
                       <td className="num">{movement.quantity}</td>
                       <td className="num">{movement.previousStock}</td>
                       <td className="num">{movement.newStock}</td>
-                      <td className="num">
-                        {movement.unitCost === null ? '—' : formatMoney(movement.unitCost)}
-                      </td>
+                      {canSeeValues && (
+                        <td className="num">
+                          {movement.unitCost === null ? '—' : formatMoney(movement.unitCost)}
+                        </td>
+                      )}
                       <td>{movement.reason ?? '—'}</td>
                       <td>{movement.reference ?? '—'}</td>
                     </tr>
