@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { ApiError, apiFetch } from '../api/client'
 import type { PagedResult, ProductListItem } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import ProductStatusBadge from '../components/ProductStatusBadge'
 import { formatMoney } from '../utils/format'
 
 const PAGE_SIZE = 20
@@ -12,10 +13,12 @@ export default function ProductsPage() {
   const { user } = useAuth()
   // El precio de venta es información comercial: Inventario no lo ve (evita fugas y confusiones con el costo)
   const canSeeSalePrice = user?.role === 'Admin' || user?.role === 'Contador'
+  const canEditCatalog = user?.role === 'Admin' || user?.role === 'Inventario'
   const columnCount = canSeeSalePrice ? 7 : 6
   const [searchText, setSearchText] = useState('')
   const [search, setSearch] = useState('')
   const [lowStockOnly, setLowStockOnly] = useState(false)
+  const [outOfStockOnly, setOutOfStockOnly] = useState(false)
   const [page, setPage] = useState(1)
   const [result, setResult] = useState<PagedResult<ProductListItem> | null>(null)
   const [loading, setLoading] = useState(true)
@@ -36,7 +39,7 @@ export default function ProductsPage() {
     setLoading(true)
     setError(null)
 
-    apiFetch<PagedResult<ProductListItem>>(buildUrl(page, search, lowStockOnly))
+    apiFetch<PagedResult<ProductListItem>>(buildUrl(page, search, lowStockOnly, outOfStockOnly))
       .then((data) => {
         if (!cancelled) setResult(data)
       })
@@ -53,7 +56,7 @@ export default function ProductsPage() {
     return () => {
       cancelled = true
     }
-  }, [page, search, lowStockOnly])
+  }, [page, search, lowStockOnly, outOfStockOnly])
 
   const products = result?.data ?? []
 
@@ -81,7 +84,23 @@ export default function ProductsPage() {
           />{' '}
           Solo stock bajo
         </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={outOfStockOnly}
+            onChange={(e) => {
+              setOutOfStockOnly(e.target.checked)
+              setPage(1)
+            }}
+          />{' '}
+          Solo sin stock
+        </label>
         <span className="muted">{result ? `${result.totalCount} productos` : ''}</span>
+        {canEditCatalog && (
+          <Link to="/productos/nuevo" className="btn">
+            Nuevo producto
+          </Link>
+        )}
       </div>
 
       {error && <div className="alert-error">{error}</div>}
@@ -121,6 +140,7 @@ export default function ProductsPage() {
                     key={product.id}
                     product={product}
                     canSeeSalePrice={canSeeSalePrice}
+                    canEditCatalog={canEditCatalog}
                   />
                 ))}
             </tbody>
@@ -158,9 +178,11 @@ export default function ProductsPage() {
 function ProductRow({
   product,
   canSeeSalePrice,
+  canEditCatalog,
 }: {
   product: ProductListItem
   canSeeSalePrice: boolean
+  canEditCatalog: boolean
 }) {
   return (
     <tr>
@@ -172,34 +194,35 @@ function ProductRow({
       )}
       <td className="num">{product.stockQuantity}</td>
       <td>
-        <StatusBadge product={product} />
+        <ProductStatusBadge product={product} />
       </td>
       <td>
         <Link to={`/productos/${product.id}/kardex`} className="btn btn-secondary">
           Ver kardex
         </Link>
+        {canEditCatalog && (
+          <>
+            {' '}
+            <Link to={`/productos/${product.id}/editar`} className="btn btn-secondary">
+              Editar
+            </Link>
+          </>
+        )}
       </td>
     </tr>
   )
 }
 
-function StatusBadge({ product }: { product: ProductListItem }) {
-  if (!product.isActive) {
-    return <span className="badge badge-warning">Inactivo</span>
-  }
-  if (product.isLowStock) {
-    return <span className="badge badge-danger">Stock bajo</span>
-  }
-  return <span className="badge badge-success">OK</span>
-}
-
-function buildUrl(page: number, search: string, lowStockOnly: boolean): string {
+function buildUrl(page: number, search: string, lowStockOnly: boolean, outOfStockOnly: boolean): string {
   let url = `/api/products?page=${page}&pageSize=${PAGE_SIZE}&sortBy=name`
   if (search) {
     url += `&search=${encodeURIComponent(search)}`
   }
   if (lowStockOnly) {
     url += '&lowStockOnly=true'
+  }
+  if (outOfStockOnly) {
+    url += '&outOfStockOnly=true'
   }
   return url
 }

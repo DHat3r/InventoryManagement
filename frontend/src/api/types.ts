@@ -41,14 +41,22 @@ export type CategoryRef = {
   name: string
 }
 
+// Tres dimensiones independientes de un producto (ver Models/ProductStates.cs en la API)
+export type ApprovalStatus = 'Pendiente' | 'Aprobado' | 'Rechazado'
+export type Lifecycle = 'Activo' | 'Retirado' | 'Descontinuado'
+
 export type ProductListItem = {
   id: number
   name: string
   sku: string | null
-  price: number | null
+  price: number | null // null si aún no se aprueba o si el rol no ve precios de venta
   stockQuantity: number
-  isActive: boolean
+  approvalStatus: ApprovalStatus
+  lifecycle: Lifecycle
   isLowStock: boolean
+  isOutOfStock: boolean
+  isPossiblyUnavailable: boolean // retiro solicitado, esperando a Admin
+  hasPendingEdit: boolean // edición propuesta, esperando a Admin
   category: CategoryRef
 }
 
@@ -59,7 +67,62 @@ export type Product = ProductListItem & {
   unitOfMeasure: string | null
   createdAt: string
   updatedAt: string | null
+  rejectionReason: string | null
   marginPercentage: number | null
+}
+
+export type Category = {
+  id: number
+  name: string
+}
+
+// Body de POST /api/products y PUT /api/products/{id}. price: solo Admin (Inventario lo omite).
+export type ProductInput = {
+  name: string
+  price?: number
+  cost: number
+  categoryId: number
+  sku?: string
+  description?: string
+  stockQuantity: number
+  minStockLevel: number
+  unitOfMeasure?: string
+}
+
+export type ChangeRequestType = 'Edicion' | 'Retiro'
+export type ChangeRequestStatus = 'Pendiente' | 'Aprobada' | 'Rechazada'
+
+export type ProductCurrentValues = {
+  name: string
+  sku: string | null
+  description: string | null
+  cost: number
+  categoryId: number
+  minStockLevel: number
+  unitOfMeasure: string | null
+}
+
+// Solicitud de Inventario que Admin revisa (GET /api/product-change-requests)
+export type ProductChangeRequest = {
+  id: number
+  productId: number
+  productName: string
+  type: ChangeRequestType
+  status: ChangeRequestStatus
+  name: string | null
+  sku: string | null
+  description: string | null
+  cost: number | null
+  categoryId: number | null
+  minStockLevel: number | null
+  unitOfMeasure: string | null
+  reason: string | null
+  requestedBy: number
+  requestedAt: string
+  reviewedBy: number | null
+  reviewedAt: string | null
+  reviewComment: string | null
+  current: ProductCurrentValues
 }
 
 export type MovementType = 'Entrada' | 'Salida' | 'Ajuste'
