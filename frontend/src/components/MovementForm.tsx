@@ -9,8 +9,8 @@ type MovementFormProps = {
   onCreated: () => void
 }
 
-// Regla del backend para Ajustes: si se envía unitCost, el ajuste SUMA stock;
-// si se omite, RESTA stock. Por eso "Sumar" exige costo y "Restar" nunca lo envía.
+// Reglas del backend: una Entrada exige unitCost. En un Ajuste, si se envía unitCost
+// el ajuste SUMA stock; si se omite, RESTA. Por eso "Sumar" exige costo y "Restar" nunca lo envía.
 export default function MovementForm({ productId, onCreated }: MovementFormProps) {
   const [type, setType] = useState<MovementType>('Entrada')
   const [direction, setDirection] = useState<AdjustmentDirection>('Sumar')
@@ -114,7 +114,7 @@ export default function MovementForm({ productId, onCreated }: MovementFormProps
               type="number"
               step={0.01}
               min={0}
-              required={isAddingAdjustment}
+              required
               value={unitCost}
               onChange={(event) => setUnitCost(event.target.value)}
             />
