@@ -143,6 +143,14 @@ El panel queda en `http://localhost:5173`: login, listado de productos con búsq
 
 > Vite no funciona si la ruta de la carpeta contiene `#` (por ejemplo `c#/`). En ese caso usa `npm run build` y `npm run preview` (puerto 4173), o clona el repo en una ruta sin `#`.
 
+El panel sigue el modo claro u oscuro del sistema.
+
+![Kardex de un producto: cifras del stock, registro de movimientos e historial](docs/panel-kardex.png)
+
+| Productos | Kardex en modo oscuro |
+|-----------|-----------------------|
+| ![Listado de productos con su estado](docs/panel-productos.png) | ![Kardex en modo oscuro](docs/panel-kardex-oscuro.png) |
+
 ## Tests
 
 ```bash

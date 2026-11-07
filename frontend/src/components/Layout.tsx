@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router'
 import { useAuth } from '../auth/AuthContext'
+import BrandMark from './BrandMark'
 
 export default function Layout() {
   const { user, logout } = useAuth()
@@ -8,7 +9,10 @@ export default function Layout() {
     <>
       <header className="header">
         <div className="header-left">
-          <span className="brand">InventoryManagement</span>
+          <span className="brand">
+            <BrandMark />
+            InventoryManagement
+          </span>
           <NavLink to="/productos" className="nav-link">
             Productos
           </NavLink>
