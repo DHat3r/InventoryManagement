@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import BrandMark from '../components/BrandMark'
 
 export default function LoginPage() {
   const { user, login } = useAuth()
@@ -30,6 +31,7 @@ export default function LoginPage() {
   return (
     <div className="auth-page">
       <section className="card auth-card">
+        <BrandMark />
         <h1>InventoryManagement</h1>
         <p className="muted">Inicia sesión para continuar</p>
 
